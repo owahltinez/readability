@@ -1,0 +1,31 @@
+[project]
+name = "readability"
+version = "0.1.0"
+description = "A CLI to pull Google style guides in markdown format."
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "beautifulsoup4>=4.14.3",
+    "click>=8.3.1",
+    "markdownify>=1.2.2",
+    "requests>=2.33.0",
+]
+
+[project.scripts]
+readability = "readability:main"
+
+[tool.uv]
+package = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["."]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "ruff>=0.15.8",
+]
