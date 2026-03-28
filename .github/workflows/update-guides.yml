@@ -1,0 +1,33 @@
+name: Update Style Guides
+
+on:
+  schedule:
+    - cron: '0 0 * * 0' # Weekly on Sunday at midnight
+  workflow_dispatch: # Ad-hoc trigger
+
+jobs:
+  update-guides:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+
+      - name: Sync guides
+        run: uv run readability sync --verbose
+
+      - name: Commit and push changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update style guides [skip ci]"
+          file_pattern: 'guides/*.md'
