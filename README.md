@@ -5,6 +5,7 @@ A simple CLI tool to pull the latest style guides from Google for various progra
 ## Features
 
 - Supports multiple languages (Python, Shell, C++, Java, JS/TS, Go, etc.).
+- **Linting & Formatting**: A `check` command that automatically detects and runs relevant tools (Ruff, Biome, Prettier, Go Fmt) for your project.
 - **Offline Mode**: Local caching of style guides for fast, offline access.
 - **Sync Command**: Easily update all local guides with a single command.
 - Converts HTML-based style guides to Markdown using `markdownify`.
@@ -15,11 +16,11 @@ A simple CLI tool to pull the latest style guides from Google for various progra
 You can run the tool directly without cloning the repository using `uvx`:
 
 ```bash
-# Fetch the Python style guide
-uvx --from git+https://github.com/owahltinez/readability.git readability fetch python
+# Get the Python style guide
+uvx --from git+https://github.com/owahltinez/readability.git readability guide python
 
 # Save the C++ style guide to a file
-uvx --from git+https://github.com/owahltinez/readability.git readability fetch cpp -o cppguide.md
+uvx --from git+https://github.com/owahltinez/readability.git readability guide cpp -o cppguide.md
 ```
 
 Alternatively, you can install it as a tool:
@@ -29,7 +30,7 @@ Alternatively, you can install it as a tool:
 uv tool install git+https://github.com/owahltinez/readability.git
 
 # Use it anywhere
-readability fetch python
+readability guide python
 ```
 
 ## Installation (For Development)
@@ -53,25 +54,73 @@ uv run readability sync
 You can run the tool using `uv run readability` or after installing it as a tool:
 
 ```bash
-# Fetch the Python style guide (uses local cache if available)
-readability fetch python
+# Get the Python style guide (uses local cache if available)
+readability guide python
 
 # Force fetching the latest version from the web
-readability fetch python --remote
+readability guide python --remote
 
 # Save a style guide to a file
-readability fetch cpp --output cpp-style.md
+readability guide cpp --output cpp-style.md
 
 # Synchronize all supported style guides to the local cache
 readability sync
 
 # List all supported languages and their aliases
 readability languages
+
+# Check and format your code
+readability check .
 ```
+
+### Checking and Formatting
+
+The `check` command identifies and runs relevant linting and formatting tools based on file extensions and the presence of configuration files (triggers) in your project root.
+
+```bash
+# Run checks on the current directory
+readability check .
+
+# Check specific files or directories
+readability check src/ tests/ main.py
+
+# Automatically fix and format files
+readability check . --fix
+```
+
+#### Supported Tools
+
+| Tool | Supported Extensions | Trigger Files |
+|------|----------------------|---------------|
+| **Ruff** | `.py` | `pyproject.toml`, `ruff.toml`, `.ruff.toml` |
+| **Biome** | `.js`, `.ts`, `.jsx`, `.tsx`, `.json`, `.jsonc`, `.css`, `.html` | `biome.json`, `biome.jsonc` |
+| **Prettier** | `.js`, `.ts`, `.jsx`, `.tsx`, `.json`, `.css`, `.scss`, `.html`, `.md`, `.yml`, `.yaml` | `.prettierrc*`, `prettier.config.*` |
+| **Go Fmt** | `.go` | `go.mod` |
+
+The command will only run a tool if its trigger file exists in the current working directory and the tool is available in your `PATH`. For `biome` and `prettier`, it attempts to run them via `npx`.
 
 ### Supported Languages
 
-Use `readability languages` to see a full list of supported languages and their aliases. Commonly supported: `python`, `shell`, `objc`, `r`, `csharp`, `go`, `cpp`, `java`, `js`, `ts`, `html`, `css`, `json`, `vim`.
+Use `readability languages` to see a full list of supported languages and their aliases. This command also indicates which guides are currently available in the local cache with a `[cached]` label:
+
+```bash
+$ readability languages
+Supported languages and their aliases:
+  - r [cached]
+  - c++, cpp [cached]
+  - c#, csharp [cached]
+  - docguide, markdown [cached]
+  - go [cached]
+  - css, html [cached]
+  - java [cached]
+  - javascript, js [cached]
+  - json [cached]
+  - objc, objective-c [cached]
+  - python [cached]
+  - shell [cached]
+  - ts, typescript [cached]
+  - vim [cached]
+```
 
 ## Automatic Updates
 
@@ -79,7 +128,7 @@ The style guides in the `guides/` directory are automatically synchronized weekl
 
 ## Offline Mode
 
-The tool stores local copies of the style guides in the `guides/` directory. By default, `fetch` will use these local files if they exist. Use the `sync` command to refresh these files from the web.
+The tool stores local copies of the style guides in the `guides/` directory. By default, `guide` will use these local files if they exist. Use the `sync` command to refresh these files from the web.
 
 ### Custom Cache Location
 
@@ -87,7 +136,7 @@ You can override the default `guides/` directory by setting the `READABILITY_CAC
 
 ```bash
 export READABILITY_CACHE=/path/to/my/guides
-readability fetch python
+readability guide python
 ```
 
 ## Development
