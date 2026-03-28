@@ -14,8 +14,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger("readability")
 
-# Path to the directory where guides are stored locally
-GUIDES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "guides")
+def get_guides_dir():
+    """
+    Get the directory where style guides are cached.
+    Defaults to 'guides/' in the same directory as this script,
+    but can be overridden by the READABILITY_CACHE environment variable.
+    """
+    return os.getenv("READABILITY_CACHE") or os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "guides"
+    )
+
 
 # Mapping of languages to their Google Style Guide file paths
 LANGUAGE_MAP = {
@@ -91,7 +99,7 @@ def get_local_path(filename):
     """
     # Use the base filename and change extension to .md for uniform storage
     base_name = os.path.basename(filename).split(".")[0]
-    return os.path.join(GUIDES_DIR, f"{base_name}.md")
+    return os.path.join(get_guides_dir(), f"{base_name}.md")
 
 
 def fetch_guide(language, remote=False):
@@ -123,8 +131,8 @@ def fetch_guide(language, remote=False):
     markdown_content = convert_to_markdown(content, filename)
 
     # Save to local cache for future use
-    if not os.path.exists(GUIDES_DIR):
-        os.makedirs(GUIDES_DIR, exist_ok=True)
+    if not os.path.exists(get_guides_dir()):
+        os.makedirs(get_guides_dir(), exist_ok=True)
 
     with open(local_path, "w") as f:
         f.write(markdown_content)
@@ -189,8 +197,8 @@ def sync(verbose):
 
     logger.info("Synchronizing all style guides...")
 
-    if not os.path.exists(GUIDES_DIR):
-        os.makedirs(GUIDES_DIR, exist_ok=True)
+    if not os.path.exists(get_guides_dir()):
+        os.makedirs(get_guides_dir(), exist_ok=True)
 
     # Get unique filenames to avoid redundant downloads
     filenames = set(LANGUAGE_MAP.values())
@@ -216,6 +224,24 @@ def sync(verbose):
             failure_count += 1
 
     logger.info(f"Sync complete. Successes: {success_count}, Failures: {failure_count}")
+
+
+@cli.command()
+def languages():
+    """
+    List all supported languages and their aliases.
+    """
+    # Group languages by their target guide
+    guides = {}
+    for lang, filename in LANGUAGE_MAP.items():
+        if filename not in guides:
+            guides[filename] = []
+        guides[filename].append(lang)
+
+    click.echo("Supported languages and their aliases:")
+    for filename in sorted(guides.keys()):
+        aliases = sorted(guides[filename])
+        click.echo(f"  - {', '.join(aliases)}")
 
 
 # Main entry point for the CLI

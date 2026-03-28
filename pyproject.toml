@@ -1,6 +1,6 @@
 [project]
 name = "readability"
-version = "0.1.0"
+version = "0.2.0"
 description = "A CLI to pull Google style guides in markdown format."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -16,6 +16,12 @@ readability = "readability:main"
 
 [tool.uv]
 package = true
+
+[tool.hatch.build.targets.wheel]
+include = [
+    "/readability.py",
+    "/guides",
+]
 
 [build-system]
 requires = ["hatchling"]

@@ -76,8 +76,8 @@ def test_fetch_guide_integration(mock_fetch_content, tmp_path):
     """
     mock_fetch_content.return_value = "# Python Guide"
 
-    # Mock GUIDES_DIR to point to tmp_path
-    with patch("readability.GUIDES_DIR", str(tmp_path)):
+    # Mock get_guides_dir to point to tmp_path
+    with patch("readability.get_guides_dir", return_value=str(tmp_path)):
         content = fetch_guide("python", remote=True)
         assert content == "# Python Guide"
         assert os.path.exists(os.path.join(tmp_path, "pyguide.md"))
@@ -137,7 +137,7 @@ def test_sync_command(mock_fetch_content, tmp_path, caplog):
     """
     mock_fetch_content.return_value = "content"
 
-    with patch("readability.GUIDES_DIR", str(tmp_path)):
+    with patch("readability.get_guides_dir", return_value=str(tmp_path)):
         with caplog.at_level(logging.INFO):
             runner = CliRunner()
             result = runner.invoke(cli, ["sync"])
@@ -145,3 +145,41 @@ def test_sync_command(mock_fetch_content, tmp_path, caplog):
             assert "Sync complete" in caplog.text
             # Check if at least one guide was "synced" (written to tmp_path)
             assert len(os.listdir(tmp_path)) > 0
+
+
+def test_languages_command():
+    """
+    Test the languages command.
+    """
+    runner = CliRunner()
+    result = runner.invoke(cli, ["languages"])
+    assert result.exit_code == 0
+    assert "Supported languages and their aliases:" in result.output
+    # Check for some common languages
+    assert "python" in result.output
+    assert "c++, cpp" in result.output
+    assert "c#, csharp" in result.output
+
+
+def test_readability_cache_env(tmp_path, monkeypatch):
+    """
+    Test that READABILITY_CACHE environment variable is respected.
+    """
+    from readability import get_guides_dir
+    custom_cache = str(tmp_path / "custom_guides")
+    monkeypatch.setenv("READABILITY_CACHE", custom_cache)
+    assert get_guides_dir() == custom_cache
+
+
+def test_default_guides_dir():
+    """
+    Test the default guides directory.
+    """
+    from readability import get_guides_dir
+    import os
+    
+    # Ensure environment variable is not set
+    with patch.dict(os.environ, clear=True):
+        guides_dir = get_guides_dir()
+        assert guides_dir.endswith("guides")
+        assert os.path.dirname(guides_dir) == os.path.dirname(os.path.abspath("readability.py"))

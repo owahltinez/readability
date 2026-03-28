@@ -64,11 +64,14 @@ readability fetch cpp --output cpp-style.md
 
 # Synchronize all supported style guides to the local cache
 readability sync
+
+# List all supported languages and their aliases
+readability languages
 ```
 
 ### Supported Languages
 
-`python`, `shell`, `objc`, `r`, `csharp`, `go`, `cpp`, `java`, `js`, `ts`, `html`, `css`, `json`, `vim`, and more aliases.
+Use `readability languages` to see a full list of supported languages and their aliases. Commonly supported: `python`, `shell`, `objc`, `r`, `csharp`, `go`, `cpp`, `java`, `js`, `ts`, `html`, `css`, `json`, `vim`.
 
 ## Automatic Updates
 
@@ -77,6 +80,15 @@ The style guides in the `guides/` directory are automatically synchronized weekl
 ## Offline Mode
 
 The tool stores local copies of the style guides in the `guides/` directory. By default, `fetch` will use these local files if they exist. Use the `sync` command to refresh these files from the web.
+
+### Custom Cache Location
+
+You can override the default `guides/` directory by setting the `READABILITY_CACHE` environment variable. This is useful if you want to store the guides in a specific location or share them across different installations.
+
+```bash
+export READABILITY_CACHE=/path/to/my/guides
+readability fetch python
+```
 
 ## Development
 
