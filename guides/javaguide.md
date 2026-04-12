@@ -122,6 +122,10 @@ If license or copyright information belongs in a file, it belongs here.
 
 ### 3.2 Package declaration
 
+Every source file must have a package declaration. [Compact source files](https://openjdk.org/jeps/512) are not used. (This rule obviously does not apply to
+`module-info.java` files, which have a different syntax that does not include a
+package declaration.)
+
 The package declaration is **not line-wrapped**. The column limit (Section 4.4,
 [Column limit: 100](#s4.4-column-limit)) does not apply to package declarations.
 
@@ -131,6 +135,16 @@ The package declaration is **not line-wrapped**. The column limit (Section 4.4,
 
 **Wildcard ("on-demand") imports**, static or otherwise, **are not
 used**.
+
+#### 3.3.1.1 No module imports
+
+[Module imports](https://docs.oracle.com/en/java/javase/25/language/module-import-declarations.html) **are not used**.
+
+Example:
+
+```
+import module java.base;
+```
 
 #### 3.3.2 No line-wrapping
 
@@ -725,7 +739,7 @@ package com.example.frozzler;
 ```
 /** This is a module. */
 @Deprecated
-@SuppressWarnings("CheckReturnValue")
+@SuppressWarnings("CheckReturnValue") // TODO: b/123 - Fix existing CRV violations.
 module com.example.frozzler { ... }
 ```
 
@@ -740,8 +754,9 @@ The rules for annotations on method and constructor declarations are the same as
 public String getNameIfPresent() { ... }
 ```
 
-**Exception:** A *single* parameterless annotation
-*may* instead appear together with the first line of the signature, for example:
+**Exception:** If the method or constructor only has a
+*single*, *parameterless* annotation, it *may* appear together with the first
+line of the signature, for example:
 
 ```
 @Override public int hashCode() { ... }
@@ -973,6 +988,15 @@ Each type variable is named in one of two styles:
   `RequestT`,
   `FooBarT`).
 
+#### 5.2.9 Unnamed variables
+
+The `_` syntax for unnamed variables and parameters is
+allowed wherever it is applicable. For example:
+
+```
+Predicate<String> alwaysTrue = _ -> true;
+```
+
 
 
 ### 5.3 Camel case: defined
@@ -1046,7 +1070,7 @@ justified is explained in a comment.
 try {
   int i = Integer.parseInt(response);
   return handleNumericResponse(i);
-} catch (NumberFormatException ok) {
+} catch (NumberFormatException _) {
   // it's not numeric; that's fine, just continue
 }
 return handleTextResponse(response);
