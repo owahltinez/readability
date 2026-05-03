@@ -301,8 +301,18 @@ ABSL_DECLARE_FLAG(flag_in_b);
   (e.g., using pointer members instead of object members)
   can make the code slower and more complex.
 
-Try to avoid forward declarations of entities
-defined in another project.
+Do not use forward declarations of entities that your project
+does not own.
+
+For entities that you do own:
+
+* Try to make the header for a declaration cheap enough
+  to easily include it directly.
+* If the full header is too expensive to include,
+  try to speed up the header's compilation.
+* If your best engineering judgment is that a forward
+  declaration is a better way to fix a slowdown, exercise
+  that judgment and use a forward declaration.
 
 ### Defining Functions in Header Files
 
@@ -629,7 +639,7 @@ Namespaces should be used as follows:
 
   namespace internal {  // Internal, not part of the API.
   namespace sidetable = ::pipeline_diagnostics::sidetable;
-  }  // namespace internal
+  }
 
   inline void my_inline_function() {
     // Local to a function.
@@ -1449,7 +1459,7 @@ pure abstract base class (one with no state or defined
 methods); all other inheritance is "implementation
 inheritance".
 
-Implementation inheritance reduces code size by re-using
+Implementation inheritance reduces code size by reusing
 the base class code as it specializes an existing type.
 Because inheritance is a compile-time declaration, you
 and the compiler can understand the operation and detect
@@ -1917,6 +1927,24 @@ There are various tricks and utilities that
 we use to make C++ code more robust, and various ways we use
 C++ that may differ from what you see elsewhere.
 
+### cpplint
+
+Use `cpplint.py` to detect style errors.
+
+`cpplint.py`
+is a tool that reads a source file and identifies many
+style errors. It is not perfect, and has both false
+positives and false negatives, but it is still a valuable
+tool.
+
+Some projects have instructions on
+how to run `cpplint.py` from their project
+tools. If the project you are contributing to does not,
+you can download
+[`cpplint.py`](https://raw.githubusercontent.com/cpplint/cpplint/HEAD/cpplint.py) separately.
+
+## Other C++ Features
+
 ### Ownership and Smart Pointers
 
 Prefer to have single, fixed owners for dynamically
@@ -2020,24 +2048,6 @@ do use shared ownership, prefer to use
 Never use `std::auto_ptr`. Instead, use
 `std::unique_ptr`.
 
-### cpplint
-
-Use `cpplint.py` to detect style errors.
-
-`cpplint.py`
-is a tool that reads a source file and identifies many
-style errors. It is not perfect, and has both false
-positives and false negatives, but it is still a valuable
-tool.
-
-Some projects have instructions on
-how to run `cpplint.py` from their project
-tools. If the project you are contributing to does not,
-you can download
-[`cpplint.py`](https://raw.githubusercontent.com/cpplint/cpplint/HEAD/cpplint.py) separately.
-
-## Other C++ Features
-
 ### Rvalue References
 
 Use rvalue references only in certain special cases listed below.
@@ -2078,7 +2088,7 @@ rules apply. Such a reference is called a forwarding reference.
   arguments are temporary objects and/or const.
   This is called 'perfect forwarding'.
 
-* Rvalue references are not yet widely understood. Rules like reference
+* Rvalue references are not widely understood. Rules like reference
   collapsing and the special deduction rule for forwarding references
   are somewhat obscure.
 * Rvalue references are often misused. Using rvalue
@@ -2361,9 +2371,9 @@ When the logic of a program guarantees that a given
 instance of a base class is in fact an instance of a
 particular derived class, then a
 `dynamic_cast` may be used freely on the
-object. Usually one
-can use a `static_cast` as an alternative in
-such situations.
+object. Usually
+[`absl::down_cast`](https://github.com/abseil/abseil-cpp/blob/master/absl/base/casts.h) provides an even better
+alternative.
 
 Decision trees based on type are a strong indication
 that your code is on the wrong track.
@@ -2413,6 +2423,10 @@ The C++-style cast syntax is verbose and cumbersome.
 
 In general, do not use C-style casts. Instead, use these C++-style
 casts when explicit type conversion is necessary.
+Some are part of the standard C++ language,
+and some are defined in
+[`absl/base/casts.h`](https://github.com/abseil/abseil-cpp/blob/master/absl/base/casts.h). Use the first that
+**correctly applies**:
 
 * Use brace initialization to convert arithmetic types
   (e.g., `int64_t{x}`). This is the safest approach because code
@@ -2435,6 +2449,10 @@ casts when explicit type conversion is necessary.
   you need to explicitly cast a pointer from a superclass to a
   subclass. In this last case, you must be sure your object is
   actually an instance of the subclass.
+* Use `absl::down_cast`
+  to cast a pointer from a superclass
+  to a subclass. You must be sure your object is actually
+  an instance of the subclass.
 * Use `const_cast` to remove the
   `const` qualifier (see [const](#Use_of_const)).
 * Use `reinterpret_cast` to do unsafe conversions of
@@ -2711,9 +2729,7 @@ like `int16_t`, `uint32_t`,
 `int64_t`, etc. You should always use
 those in preference to `short`, `unsigned
 long long`, and the like, when you need a guarantee
-on the size of an integer. Prefer to omit the `std::`
-prefix for these types, as the extra 5 characters do
-not merit the added clutter. Of the built-in integer types, only
+on the size of an integer. Of the built-in integer types, only
 `int` should be used. When appropriate, you
 are welcome to use standard type aliases like
 `size_t` and `ptrdiff_t`.
@@ -2737,6 +2753,9 @@ number, or you need defined overflow modulo 2^N. In
 particular, do not use unsigned types to say a number
 will never be negative. Instead, use
 assertions for this.
+
+Prefer to omit the `std::` prefix on standard library
+integer types, as the extra 5 characters do not merit the added clutter.
 
 If your code is a container that returns a size, be
 sure to use a type that will accommodate any possible
@@ -2948,6 +2967,13 @@ be deduced by the compiler, rather than spelled out explicitly in the code:
     f(0);  // Invokes f<int>(0)
     ```
 
+    A lambda expression can also have template parameters, which are deduced in the same way:
+
+    ```
+    // Sort `vec` in decreasing order
+    std::sort(vec.begin(), vec.end(), []<typename T>(T lhs, T rhs) { return lhs > rhs; });
+    ```
+
 [`auto` variable declarations](https://en.cppreference.com/w/cpp/language/auto)
 :   A variable declaration can use the `auto` keyword in place
     of the type. The compiler deduces the type from the variable's
@@ -2988,11 +3014,10 @@ be deduced by the compiler, rather than spelled out explicitly in the code:
     rely on type deduction; it's just an alternative syntax for an explicit
     return type.
 
-[Generic lambdas](https://isocpp.org/wiki/faq/cpp14-language#generic-lambdas)
-:   A lambda expression can use the `auto` keyword in place of
-    one or more of its parameter types. This causes the lambda's call operator
-    to be a function template instead of an ordinary function, with a separate
-    template parameter for each `auto` function parameter:
+[`auto` parameters](https://en.cppreference.com/w/cpp/language/auto.html)
+:   A function or lambda expression can use the `auto` keyword in place of
+    one or more of its parameter types. This causes it to be a function template instead of an
+    ordinary function, with a separate template parameter for each `auto` function parameter:
 
     ```
     // Sort `vec` in decreasing order
@@ -3132,9 +3157,17 @@ cases where this actually provides a meaningful benefit are quite rare.
 Note that class template argument deduction is also subject to a
 [separate style rule](#CTAD).
 
+Explicit types for elements of `map`-like containers are easy to
+get wrong. In those cases [structured
+bindings](#Structured_Bindings) for the key and value are almost always clearer than a single
+variable representing the pair.
+
 Do not use `decltype(auto)` if a simpler option will work;
 because it's a fairly obscure feature, it has a high cost in code
 clarity.
+
+See [TotW #232](https://abseil.io/tips/232) for more details on
+when to use `auto` for variable declarations.
 
 #### Return type deduction
 
@@ -3147,16 +3180,38 @@ deduced return types don't define abstraction boundaries: the implementation
 *is* the interface. In particular, public functions in header files
 should almost never have deduced return types.
 
-#### Parameter type deduction
+#### Function parameter type deduction
 
-`auto` parameter types for lambdas should be used with caution,
-because the actual type is determined by the code that calls the lambda,
-rather than by the definition of the lambda. Consequently, an explicit
-type will almost always be clearer unless the lambda is explicitly called
-very close to where it's defined (so that the reader can easily see both),
-or the lambda is passed to an interface so well-known that it's
-obvious what arguments it will eventually be called with (e.g.,
-the `std::sort` example above).
+Avoid using parameter type deduction (using either `auto` or template
+parameters) if you can give the parameter a specific type instead. If it will only
+be called with one type, it will almost always be clearer to make that type explicit,
+unless it is called very close to where it's defined (so that the reader can easily
+see both), or it's a lambda being passed to an interface so well-known that it's
+obvious what type it will eventually be called with (e.g., the `std::sort`
+example above)
+
+Do not use `auto` parameters in non-lambda functions. Use named template parameters
+instead, because they are more explicit about the fact that the function is a template:
+
+```
+void F(auto arg) { ... }
+```
+
+```
+template <typename T>
+void F(T arg) { ... }
+```
+
+In a lambda expression, if you need to refer to the type of a parameter, prefer to make that
+type a template parameter:
+
+```
+[](auto x) { decltype(x) y; ... }
+```
+
+```
+[]<typename T>(T x) { T y; ... }
+```
 
 #### Lambda init captures
 
@@ -3176,6 +3231,13 @@ example above), because they don't have meaningful field names to begin with,
 but note that you generally [shouldn't use
 pairs or tuples](#Structs_vs._Tuples) unless a pre-existing API like `insert`
 forces you to.
+
+The elements of containers like `std::map<K, V>` benefit
+especially from structured bindings; not only can the two parts of the pair be
+given more specific names, but the use of type deduction dodges the common bug
+of failing to `const`-qualify the key type of the element, which
+often surprisingly succeeds in compiling by introducing unintended
+copying.
 
 If the object being bound is a struct, it may sometimes be helpful to
 provide names that are more specific to your usage, but keep in mind that
@@ -3674,71 +3736,9 @@ Use only coroutine libraries that have been approved for
 project-wide use by your project leads. Do not roll your own promise or
 awaitable types.
 
-### Boost
-
-Use only approved libraries from the Boost library
-collection.
-
-The
-[Boost library collection](https://www.boost.org/) is a popular collection of
-peer-reviewed, free, open-source C++ libraries.
-
-Boost code is generally very high-quality, is widely
-portable, and fills many important gaps in the C++
-standard library, such as type traits and better binders.
-
-Some Boost libraries encourage coding practices which can
-hamper readability, such as metaprogramming and other
-advanced template techniques, and an excessively
-"functional" style of programming.
-
-In order to maintain a high level of readability for
-all contributors who might read and maintain code, we
-only allow an approved subset of Boost features.
-Currently, the following libraries are permitted:
-
-* [Call Traits](https://www.boost.org/libs/utility/call_traits.htm) from `boost/call_traits.hpp`
-* [Compressed Pair](https://www.boost.org/libs/utility/compressed_pair.htm) from `boost/compressed_pair.hpp`
-* [The Boost Graph Library (BGL)](https://www.boost.org/libs/graph/) from `boost/graph`,
-  except serialization (`adj_list_serialize.hpp`) and
-  parallel/distributed algorithms and data structures
-  (`boost/graph/parallel/*` and
-  `boost/graph/distributed/*`).
-* [Property Map](https://www.boost.org/libs/property_map/) from `boost/property_map`, except
-  parallel/distributed property maps (`boost/property_map/parallel/*`).
-* [Iterator](https://www.boost.org/libs/iterator/) from `boost/iterator`
-* The part of [Polygon](https://www.boost.org/libs/polygon/) that deals with Voronoi diagram
-  construction and doesn't depend on the rest of
-  Polygon:
-  `boost/polygon/voronoi_builder.hpp`,
-  `boost/polygon/voronoi_diagram.hpp`, and
-  `boost/polygon/voronoi_geometry_type.hpp`
-* [Bimap](https://www.boost.org/libs/bimap/) from `boost/bimap`
-* [Statistical Distributions and Functions](https://www.boost.org/libs/math/doc/html/dist.html) from
-  `boost/math/distributions`
-* [Special Functions](https://www.boost.org/libs/math/doc/html/special.html) from `boost/math/special_functions`
-* [Root Finding & Minimization Functions](https://www.boost.org/libs/math/doc/html/root_finding.html) from `boost/math/tools`
-* [Multi-index](https://www.boost.org/libs/multi_index/) from `boost/multi_index`
-* [Heap](https://www.boost.org/libs/heap/) from `boost/heap`
-* The flat containers from
-  [Container](https://www.boost.org/libs/container/):
-  `boost/container/flat_map`, and
-  `boost/container/flat_set`
-* [Intrusive](https://www.boost.org/libs/intrusive/)
-  from `boost/intrusive`.
-* [The
-  `boost/sort` library](https://www.boost.org/libs/sort/).
-* [Preprocessor](https://www.boost.org/libs/preprocessor/)
-  from `boost/preprocessor`.
-
-We are actively considering adding other Boost
-features to the list, so this list may be expanded in
-the future.
-
 ### Disallowed standard library features
 
-As with [Boost](#Boost), some modern C++
-library functionality encourages coding practices that hamper
+Some modern C++ library functionality encourages coding practices that hamper
 readability — for example by removing
 checked redundancy (such as type names) that may be
 helpful to readers, or by encouraging template
@@ -3758,6 +3758,40 @@ The following C++ standard library features may not be used:
 * The `<filesystem>` header, which
   does not have sufficient support for testing, and suffers
   from inherent security vulnerabilities.
+
+### Third-party Libraries
+
+When choosing to use third-party libraries, be consistent with the code
+around you.
+
+A third-party library is a library that is not primarily developed in the
+same repository as your code.
+
+* Reusing high-quality third-party libraries can avoid vast amounts of
+  work duplicating their functionality.
+* Some third-party libraries are so well-established in their problem
+  domain that avoiding them would actually make the code harder to read.
+
+* Third-party libraries may have different programming practices than ours.
+  In some cases this can be "viral", making it harder for code that uses the
+  library to follow our style and programming practices.
+* Third-party libraries can carry many hidden support burdens, such as license
+  compliance, monitoring and patching vulnerabilities, and dealing with breaking
+  changes from upstream.
+
+When choosing a library to solve a particular problem, first check if there's
+already a library that your codebase typically uses for that kind of problem.
+If so, use it. If not, prefer libraries from the following sources, in roughly
+decreasing order of priority:
+
+* [Abseil](https://abseil.io/)
+  .
+* The C++ standard library (except as discussed [here](#Disallowed_Stdlib))
+* Existing first-party libraries in the codebase.
+* Third-party libraries
+
+If you choose to use a third-party library, make sure to follow
+your codebase's policies for third-party code.
 
 ### Nonstandard Extensions
 
@@ -4139,7 +4173,7 @@ class TableInfo {
 
  private:
   std::string table_name_;             // OK - underscore at end.
-  static Pool<TableInfo>* pool_;       // OK.
+  static Pool<TableInfo>* absl_nullable pool_;       // OK.
 };
 ```
 
@@ -4153,7 +4187,7 @@ the trailing underscores that data members in classes have.
 struct UrlTableProperties {
   std::string name;
   int num_entries;
-  static Pool<UrlTableProperties>* pool;
+  static Pool<UrlTableProperties>* absl_nullable pool;
 };
 ```
 
@@ -4429,8 +4463,8 @@ declaration:
   reference or pointer arguments beyond the duration of the method
   call. This is quite common for pointer/reference arguments to
   constructors.
-* For each pointer argument, whether it is allowed to be null and what happens
-  if it is.
+* For each pointer argument, whether it is allowed
+  to be null and what happens if it is.
 * For each output or input/output argument, what happens to any state that argument
   is in (e.g., is the state appended to or overwritten?).
 * If there are any performance implications of how a
@@ -5373,11 +5407,12 @@ class MyClass : public OtherClass {
  public:      // Note the 1 space indent!
   MyClass();  // Regular 2 space indent.
   explicit MyClass(int var);
+  MyClass(const MyClass& other);
+  MyClass& operator=(const MyClass& other);
   ~MyClass() {}
 
   void SomeFunction();
-  void SomeFunctionThatDoesNothing() {
-  }
+  void SomeFunctionThatDoesNothing() {}
 
   void set_some_var(int var) { some_var_ = var; }
   int some_var() const { return some_var_; }
