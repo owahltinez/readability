@@ -5153,12 +5153,12 @@ if (condition1 &&
   DoSomething();
 ```
 
-For historical reasons, we allow one exception to the above rules: the curly
-braces for the controlled statement or the line breaks inside the curly braces
-may be omitted if as a result the entire statement appears on either a single
-line (in which case there is a space between the closing parenthesis and the
-controlled statement) or on two lines (in which case there is a line break
-after the closing parenthesis and there are no braces).
+For historical reasons, we allow, but discourage, one exception to the above
+rules: the curly braces for the controlled statement or the line breaks inside
+the curly braces may be omitted if as a result the entire statement appears on
+either a single line (in which case there is a space between the closing
+parenthesis and the controlled statement) or on two lines (in which case there
+is a line break after the closing parenthesis and there are no braces).
 
 ```
 // OK - fits on one line.
