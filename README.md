@@ -5,7 +5,8 @@ A simple CLI tool to pull the latest style guides from Google for various progra
 ## Features
 
 - Supports multiple languages (Python, Shell, C++, Java, JS/TS, Go, etc.).
-- **Linting & Formatting**: A `check` command that automatically detects and runs relevant tools (Ruff, Biome, Prettier, Go Fmt) for your project.
+- **Linting & Formatting**: A `check` command that automatically detects and runs relevant tools (Ruff, Pyrefly, Biome, Prettier, Go Fmt) for your project.
+- **Sensible Defaults**: Bundled Google-style configurations for Ruff and Pyrefly are used automatically when a project does not define its own.
 - **Offline Mode**: Local caching of style guides for fast, offline access.
 - **Sync Command**: Easily update all local guides with a single command.
 - Converts HTML-based style guides to Markdown using `markdownify`.
@@ -93,11 +94,16 @@ readability check . --fix
 | Tool | Supported Extensions | Trigger Files |
 |------|----------------------|---------------|
 | **Ruff** | `.py` | `pyproject.toml`, `ruff.toml`, `.ruff.toml` |
+| **Pyrefly** | `.py` | `pyproject.toml`, `pyrefly.toml` |
 | **Biome** | `.js`, `.ts`, `.jsx`, `.tsx`, `.json`, `.jsonc`, `.css`, `.html` | `biome.json`, `biome.jsonc` |
 | **Prettier** | `.js`, `.ts`, `.jsx`, `.tsx`, `.json`, `.css`, `.scss`, `.html`, `.md`, `.yml`, `.yaml` | `.prettierrc*`, `prettier.config.*` |
 | **Go Fmt** | `.go` | `go.mod` |
 
 The command will only run a tool if its trigger file exists in the current working directory and the tool is available in your `PATH`. For `biome` and `prettier`, it attempts to run them via `npx`.
+
+#### Default Configurations
+
+For Ruff and Pyrefly, bundled defaults based on the [Google Python style guide](https://google.github.io/styleguide/pyguide.html) (80-column lines, Google docstring convention, import ordering, full type checking) are applied when the project does not define its own configuration. To override them, add a `[tool.ruff]` or `[tool.pyrefly]` section to your `pyproject.toml` (or a dedicated `ruff.toml` / `pyrefly.toml`) — any project-level configuration takes full precedence over the bundled defaults.
 
 ### Supported Languages
 

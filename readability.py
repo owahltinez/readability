@@ -3,6 +3,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tomllib
 import warnings
 from collections.abc import Sequence
 from pathlib import Path
@@ -18,13 +19,10 @@ import requests
 # Suppress BeautifulSoup warning when parsing XML as HTML
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
-# Configure logging with structured format
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[logging.StreamHandler(sys.stderr)],
-)
 logger = logging.getLogger("readability")
+
+# Default timeout for subprocess calls in seconds
+DEFAULT_TIMEOUT = 60
 
 
 def get_guides_dir() -> str:
@@ -369,7 +367,7 @@ def _check_path(path: Path, project_root: Path, fix: bool = False) -> None:
     logger.info("Checking path: %s", path)
 
     # Iterate through all supported tool definitions
-    for tool in _get_tool_definitions(path):
+    for tool in _get_tool_definitions(path, project_root):
         if _should_run_tool(tool, path, project_root):
             _run_tool(tool["name"], tool, fix=fix)
 
@@ -396,33 +394,151 @@ def _should_run_tool(tool: dict[str, Any], path: Path, project_root: Path) -> bo
     return has_trigger
 
 
-def _get_tool_definitions(path: Path) -> list[dict[str, Any]]:
+def _bundled_config(tool_name: str) -> Path:
+    """Get the path to the bundled default configuration for a tool.
+
+    Args:
+        tool_name: The name of the tool (e.g. "ruff", "pyrefly").
+
+    Returns:
+        The path to the bundled default config file.
+    """
+    return Path(__file__).parent / "configs" / f"{tool_name}.toml"
+
+
+def _has_project_config(
+    project_root: Path, config_files: Sequence[str], tool_name: str
+) -> bool:
+    """Determine whether the project defines its own configuration for a tool.
+
+    Args:
+        project_root: The project root directory.
+        config_files: Dedicated config filenames to look for (e.g. ruff.toml).
+        tool_name: The pyproject.toml [tool.<name>] section to look for.
+
+    Returns:
+        True if the project has its own configuration, False otherwise.
+    """
+    # Dedicated config files take precedence over pyproject.toml sections
+    if any((project_root / f).exists() for f in config_files):
+        return True
+
+    # Otherwise look for a [tool.<name>] section in pyproject.toml
+    pyproject = project_root / "pyproject.toml"
+    if not pyproject.exists():
+        return False
+    try:
+        data = tomllib.loads(pyproject.read_text())
+    except (OSError, tomllib.TOMLDecodeError) as e:
+        logger.warning("Failed to parse %s: %s", pyproject, e)
+        return False
+    return tool_name in data.get("tool", {})
+
+
+def _default_config_args(
+    project_root: Path, config_files: Sequence[str], tool_name: str
+) -> list[str]:
+    """Build --config arguments pointing at the bundled defaults for a tool.
+
+    Args:
+        project_root: The project root directory.
+        config_files: Dedicated config filenames the project may define.
+        tool_name: The name of the tool, matching a bundled config file.
+
+    Returns:
+        --config arguments for the bundled defaults, or an empty list when the
+        project defines its own configuration (which must take precedence).
+    """
+    if _has_project_config(project_root, config_files, tool_name):
+        return []
+    return ["--config", str(_bundled_config(tool_name))]
+
+
+def _get_tool_definitions(path: Path, project_root: Path) -> list[dict[str, Any]]:
     """Define supported tools and their associated triggers, extensions, and commands.
 
     Args:
         path: The path being checked.
+        project_root: The project root, used to resolve default configurations.
 
     Returns:
         A list of tool configuration dictionaries.
     """
     path_str = str(path)
 
+    # Fall back to the bundled default configs unless the project has its own
+    ruff_config = _default_config_args(
+        project_root, ["ruff.toml", ".ruff.toml"], "ruff"
+    )
+    pyrefly_config = _default_config_args(project_root, ["pyrefly.toml"], "pyrefly")
+
     return [
         {
             "name": "ruff",
-            "check": ["ruff", "check", path_str],
-            "check_format": ["ruff", "format", "--check", path_str],
-            "fix": ["ruff", "check", "--fix", path_str],
-            "format": ["ruff", "format", path_str],
+            "check": ["ruff", "check", "--force-exclude", *ruff_config, path_str],
+            "check_format": [
+                "ruff",
+                "format",
+                "--check",
+                "--force-exclude",
+                *ruff_config,
+                path_str,
+            ],
+            "fix": [
+                "ruff",
+                "check",
+                "--fix",
+                "--force-exclude",
+                *ruff_config,
+                path_str,
+            ],
+            "format": ["ruff", "format", "--force-exclude", *ruff_config, path_str],
             "trigger": ["pyproject.toml", "ruff.toml", ".ruff.toml"],
             "extensions": [".py"],
         },
         {
+            # Type checker only: it reports findings but cannot fix or format
+            "name": "pyrefly",
+            "check": ["pyrefly", "check", *pyrefly_config, path_str],
+            "trigger": ["pyproject.toml", "pyrefly.toml"],
+            "extensions": [".py"],
+        },
+        {
             "name": "biome",
-            "check": ["npx", "biome", "lint", path_str],
-            "check_format": ["npx", "biome", "format", path_str],
-            "fix": ["npx", "biome", "lint", "--write", path_str],
-            "format": ["npx", "biome", "format", "--write", path_str],
+            "check": [
+                "npx",
+                "-y",
+                "biome",
+                "lint",
+                "--no-errors-on-unmatched",
+                path_str,
+            ],
+            "check_format": [
+                "npx",
+                "-y",
+                "biome",
+                "format",
+                "--no-errors-on-unmatched",
+                path_str,
+            ],
+            "fix": [
+                "npx",
+                "-y",
+                "biome",
+                "lint",
+                "--write",
+                "--no-errors-on-unmatched",
+                path_str,
+            ],
+            "format": [
+                "npx",
+                "-y",
+                "biome",
+                "format",
+                "--write",
+                "--no-errors-on-unmatched",
+                path_str,
+            ],
             "trigger": ["biome.json", "biome.jsonc"],
             "extensions": [
                 ".js",
@@ -437,8 +553,22 @@ def _get_tool_definitions(path: Path) -> list[dict[str, Any]]:
         },
         {
             "name": "prettier",
-            "check_format": ["npx", "prettier", "--check", path_str],
-            "format": ["npx", "prettier", "--write", path_str],
+            "check_format": [
+                "npx",
+                "-y",
+                "prettier",
+                "--check",
+                "--no-error-on-unmatched-pattern",
+                path_str,
+            ],
+            "format": [
+                "npx",
+                "-y",
+                "prettier",
+                "--write",
+                "--no-error-on-unmatched-pattern",
+                path_str,
+            ],
             "trigger": [
                 ".prettierrc",
                 ".prettierrc.json",
@@ -518,6 +648,7 @@ def _run_tool(
                     capture_output=True,
                     text=True,
                     check=False,
+                    timeout=DEFAULT_TIMEOUT,
                 )
                 if result.returncode != 0 or (
                     tool_name == "go fmt" and result.stdout.strip()
@@ -530,7 +661,11 @@ def _run_tool(
         if "check" in tool_config:
             logger.debug("Executing: %s", " ".join(tool_config["check"]))
             result = subprocess.run(
-                tool_config["check"], capture_output=True, text=True, check=False
+                tool_config["check"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=DEFAULT_TIMEOUT,
             )
             if result.returncode != 0:
                 click.echo(
@@ -557,12 +692,19 @@ def _execute_tool_command(cmd: list[str]) -> None:
         subprocess.CalledProcessError: If the command returns a non-zero exit code.
     """
     logger.debug("Executing: %s", " ".join(cmd))
-    subprocess.run(cmd, capture_output=True, check=True)
+    subprocess.run(cmd, capture_output=True, check=True, timeout=DEFAULT_TIMEOUT)
 
 
 # Main entry point for the CLI
 def main() -> None:
     """Main entry point for the CLI."""
+    # Configure logging here rather than at import time so that importing this
+    # module as a library (e.g. from lemming) has no side effects
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        handlers=[logging.StreamHandler(sys.stderr)],
+    )
     cli()
 
 

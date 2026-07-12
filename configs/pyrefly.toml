@@ -1,0 +1,10 @@
+# Default configuration used by `readability check` when the target project
+# does not define its own pyrefly settings (pyrefly.toml or [tool.pyrefly] in
+# pyproject.toml). The presence of a config file switches pyrefly from its
+# lenient "basic" preset to full type checking.
+
+[errors]
+# When this bundled config is used, pyrefly treats its directory as the
+# project root, so imports local to the checked project cannot be resolved
+# reliably; suppress those errors to avoid false positives
+missing-import = false

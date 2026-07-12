@@ -9,6 +9,9 @@ import requests
 from click.testing import CliRunner
 
 from readability import (
+    _bundled_config,
+    _get_tool_definitions,
+    _has_project_config,
     cli,
     convert_to_markdown,
     get_guide,
@@ -275,9 +278,17 @@ def test_check_command_ruff(
     assert result.exit_code == 0
     # ruff should be called at least twice (check and check_format)
     assert mock_run.call_count >= 2
-    # Verify one of the calls was ruff check
+    # Verify ruff check ran with the bundled default config injected
+    cfg = str(_bundled_config("ruff"))
     called_cmds = [call.args[0] for call in mock_run.call_args_list]
-    assert ["ruff", "check", "script.py"] in called_cmds
+    assert [
+        "ruff",
+        "check",
+        "--force-exclude",
+        "--config",
+        cfg,
+        "script.py",
+    ] in called_cmds
 
 
 @patch("shutil.which")
@@ -308,10 +319,26 @@ def test_check_command_fix(
         result = runner.invoke(cli, ["check", "--fix", "script.py"])
 
     assert result.exit_code == 0
+    cfg = str(_bundled_config("ruff"))
     called_cmds = [call.args[0] for call in mock_run.call_args_list]
     # Verify ruff check --fix and ruff format were called
-    assert ["ruff", "check", "--fix", "script.py"] in called_cmds
-    assert ["ruff", "format", "script.py"] in called_cmds
+    assert [
+        "ruff",
+        "check",
+        "--fix",
+        "--force-exclude",
+        "--config",
+        cfg,
+        "script.py",
+    ] in called_cmds
+    assert [
+        "ruff",
+        "format",
+        "--force-exclude",
+        "--config",
+        cfg,
+        "script.py",
+    ] in called_cmds
 
 
 @patch("shutil.which")
@@ -349,9 +376,17 @@ def test_check_command_directory(
         result = runner.invoke(cli, ["check", "subdir"])
 
     assert result.exit_code == 0
+    cfg = str(_bundled_config("ruff"))
     called_cmds = [call.args[0] for call in mock_run.call_args_list]
     # Verify ruff was called with the directory 'subdir'
-    assert ["ruff", "check", "subdir"] in called_cmds
+    assert [
+        "ruff",
+        "check",
+        "--force-exclude",
+        "--config",
+        cfg,
+        "subdir",
+    ] in called_cmds
 
 
 @patch("shutil.which")
@@ -420,5 +455,108 @@ def test_check_command_biome(
     assert result.exit_code == 0
     # npx biome lint and npx biome format should be called
     called_cmds = [call.args[0] for call in mock_run.call_args_list]
-    assert ["npx", "biome", "lint", "script.js"] in called_cmds
-    assert ["npx", "biome", "format", "script.js"] in called_cmds
+    assert [
+        "npx",
+        "-y",
+        "biome",
+        "lint",
+        "--no-errors-on-unmatched",
+        "script.js",
+    ] in called_cmds
+    assert [
+        "npx",
+        "-y",
+        "biome",
+        "format",
+        "--no-errors-on-unmatched",
+        "script.js",
+    ] in called_cmds
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_check_command_pyrefly(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """Tests the check command runs pyrefly with the bundled default config.
+
+    Args:
+        mock_run: The mocked subprocess.run function.
+        mock_which: The mocked shutil.which function.
+        tmp_path: The temporary directory fixture.
+    """
+    # Mock shutil.which to say pyrefly exists
+    mock_which.side_effect = lambda x: x if x == "pyrefly" else None
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("pyproject.toml").touch()
+        Path("script.py").touch()
+
+        result = runner.invoke(cli, ["check", "script.py"])
+
+    assert result.exit_code == 0
+    cfg = str(_bundled_config("pyrefly"))
+    called_cmds = [call.args[0] for call in mock_run.call_args_list]
+    assert ["pyrefly", "check", "--config", cfg, "script.py"] in called_cmds
+
+
+def test_has_project_config(tmp_path: Path) -> None:
+    """Tests project config detection for dedicated files and pyproject sections.
+
+    Args:
+        tmp_path: The temporary directory fixture.
+    """
+    # No config anywhere
+    assert _has_project_config(tmp_path, ["ruff.toml"], "ruff") is False
+
+    # pyproject.toml without a [tool.ruff] section
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "x"\n')
+    assert _has_project_config(tmp_path, ["ruff.toml"], "ruff") is False
+
+    # pyproject.toml with a [tool.ruff] section
+    (tmp_path / "pyproject.toml").write_text("[tool.ruff]\nline-length = 100\n")
+    assert _has_project_config(tmp_path, ["ruff.toml"], "ruff") is True
+
+    # Dedicated config file wins even without a pyproject section
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "x"\n')
+    (tmp_path / "ruff.toml").touch()
+    assert _has_project_config(tmp_path, ["ruff.toml"], "ruff") is True
+
+    # Unparseable pyproject.toml is treated as no config
+    (tmp_path / "broken").mkdir()
+    (tmp_path / "broken" / "pyproject.toml").write_text("not [ valid toml")
+    assert _has_project_config(tmp_path / "broken", ["ruff.toml"], "ruff") is False
+
+
+def test_default_configs_omitted_when_project_configured(tmp_path: Path) -> None:
+    """Tests that bundled defaults are not injected when the project has config.
+
+    Args:
+        tmp_path: The temporary directory fixture.
+    """
+    (tmp_path / "pyproject.toml").write_text("[tool.ruff]\n\n[tool.pyrefly]\n")
+    py_file = tmp_path / "script.py"
+    py_file.touch()
+
+    tools = {t["name"]: t for t in _get_tool_definitions(py_file, tmp_path)}
+    assert "--config" not in tools["ruff"]["check"]
+    assert "--config" not in tools["ruff"]["format"]
+    assert "--config" not in tools["pyrefly"]["check"]
+
+
+def test_bundled_default_configs_are_valid(tmp_path: Path) -> None:
+    """Tests that the bundled default configs exist and parse as TOML."""
+    import tomllib
+
+    # Both bundled configs must exist and be valid TOML
+    for tool in ("ruff", "pyrefly"):
+        config_path = _bundled_config(tool)
+        assert config_path.exists()
+        tomllib.loads(config_path.read_text())
+
+    # The ruff defaults follow the Google Python style guide
+    ruff_config = tomllib.loads(_bundled_config("ruff").read_text())
+    assert ruff_config["line-length"] == 80
+    assert ruff_config["lint"]["pydocstyle"]["convention"] == "google"
