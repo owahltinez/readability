@@ -1,5 +1,6 @@
 import logging
 import os
+import tomllib
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -16,6 +17,7 @@ from readability import (
     convert_to_markdown,
     get_guide,
     get_guide_content,
+    get_guides_dir,
     get_local_path,
 )
 
@@ -84,13 +86,18 @@ def test_get_local_path() -> None:
     # Nested filename
     assert os.path.basename(get_local_path("go/guide.md")) == "go-guide.md"
     # Another nested filename
-    assert os.path.basename(get_local_path("docguide/style.md")) == "docguide-style.md"
+    assert (
+        os.path.basename(get_local_path("docguide/style.md"))
+        == "docguide-style.md"
+    )
     # File with different extension
     assert os.path.basename(get_local_path("cppguide.html")) == "cppguide.md"
 
 
 @patch("readability.get_guide_content")
-def test_get_guide_integration(mock_get_content: MagicMock, tmp_path: Path) -> None:
+def test_get_guide_integration(
+    mock_get_content: MagicMock, tmp_path: Path
+) -> None:
     """Tests the orchestration in get_guide.
 
     Args:
@@ -160,7 +167,9 @@ def test_cli_verbose(mock_guide: MagicMock) -> None:
 
 @patch("readability.get_guide_content")
 def test_sync_command(
-    mock_get_content: MagicMock, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    mock_get_content: MagicMock,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Tests the sync command.
 
@@ -215,15 +224,15 @@ def test_languages_command_with_cache(tmp_path: Path) -> None:
         assert "c++, cpp" in result.output
 
 
-def test_readability_cache_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_readability_cache_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Tests that READABILITY_CACHE environment variable is respected.
 
     Args:
         tmp_path: The temporary directory fixture.
         monkeypatch: The monkeypatch fixture.
     """
-    from readability import get_guides_dir
-
     custom_cache = str(tmp_path / "custom_guides")
     monkeypatch.setenv("READABILITY_CACHE", custom_cache)
     assert get_guides_dir() == custom_cache
@@ -231,8 +240,6 @@ def test_readability_cache_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
 
 def test_default_guides_dir() -> None:
     """Tests the default guides directory."""
-    from readability import get_guides_dir
-
     # Ensure environment variable is not set
     with patch.dict(os.environ, clear=True):
         guides_dir = get_guides_dir()
@@ -263,8 +270,6 @@ def test_check_command_ruff(
     mock_which.side_effect = lambda x: x if x == "ruff" else None
 
     # Mock subprocess.run to return success
-    from unittest.mock import MagicMock
-
     mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
 
     runner = CliRunner()
@@ -307,8 +312,6 @@ def test_check_command_fix(
     mock_which.side_effect = lambda x: x if x == "ruff" else None
 
     # Mock subprocess.run to return success
-    from unittest.mock import MagicMock
-
     mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
 
     runner = CliRunner()
@@ -362,8 +365,6 @@ def test_check_command_directory(
     mock_which.side_effect = lambda x: x if x == "ruff" else None
 
     # Mock subprocess.run to return success
-    from unittest.mock import MagicMock
-
     mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
 
     runner = CliRunner()
@@ -409,8 +410,6 @@ def test_check_command_no_trigger(
     mock_which.side_effect = lambda x: x if x == "ruff" else None
 
     # Mock subprocess.run to return success
-    from unittest.mock import MagicMock
-
     mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
 
     runner = CliRunner()
@@ -441,8 +440,6 @@ def test_check_command_biome(
     mock_which.side_effect = lambda x: x if x == "npx" else None
 
     # Mock subprocess.run to return success
-    from unittest.mock import MagicMock
-
     mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
 
     runner = CliRunner()
@@ -503,7 +500,7 @@ def test_check_command_pyrefly(
 
 
 def test_has_project_config(tmp_path: Path) -> None:
-    """Tests project config detection for dedicated files and pyproject sections.
+    """Tests project config detection via dedicated files and pyproject.
 
     Args:
         tmp_path: The temporary directory fixture.
@@ -527,10 +524,14 @@ def test_has_project_config(tmp_path: Path) -> None:
     # Unparseable pyproject.toml is treated as no config
     (tmp_path / "broken").mkdir()
     (tmp_path / "broken" / "pyproject.toml").write_text("not [ valid toml")
-    assert _has_project_config(tmp_path / "broken", ["ruff.toml"], "ruff") is False
+    assert (
+        _has_project_config(tmp_path / "broken", ["ruff.toml"], "ruff") is False
+    )
 
 
-def test_default_configs_omitted_when_project_configured(tmp_path: Path) -> None:
+def test_default_configs_omitted_when_project_configured(
+    tmp_path: Path,
+) -> None:
     """Tests that bundled defaults are not injected when the project has config.
 
     Args:
@@ -548,8 +549,6 @@ def test_default_configs_omitted_when_project_configured(tmp_path: Path) -> None
 
 def test_bundled_default_configs_are_valid(tmp_path: Path) -> None:
     """Tests that the bundled default configs exist and parse as TOML."""
-    import tomllib
-
     # Both bundled configs must exist and be valid TOML
     for tool in ("ruff", "pyrefly"):
         config_path = _bundled_config(tool)

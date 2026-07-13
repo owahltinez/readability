@@ -1,3 +1,5 @@
+"""CLI for fetching Google style guides and running code quality tools."""
+
 import logging
 import os
 import shutil
@@ -9,12 +11,10 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Optional
 
-from bs4 import BeautifulSoup
-from bs4 import XMLParsedAsHTMLWarning
 import click
-from markdownify import markdownify as md
 import requests
-
+from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
+from markdownify import markdownify as md
 
 # Suppress BeautifulSoup warning when parsing XML as HTML
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
@@ -87,7 +87,9 @@ def get_guide_content(url: str) -> str:
         response.raise_for_status()
     except requests.exceptions.RequestException as e:
         logger.error("Failed to fetch content from %s: %s", url, e)
-        raise click.ClickException(f"Failed to fetch style guide from {url}: {e}")
+        raise click.ClickException(
+            f"Failed to fetch style guide from {url}: {e}"
+        )
 
     return response.text
 
@@ -118,21 +120,25 @@ def convert_to_markdown(content: str, filename: str) -> str:
 
         # Add titles as headers
         guide = soup.find("guide")
-        if guide and guide.get("title"):
-            h1 = soup.new_tag("h1")
-            h1.string = guide.get("title")
-            guide.insert(0, h1)
+        if guide:
+            title = guide.get("title")
+            if isinstance(title, str) and title:
+                h1 = soup.new_tag("h1")
+                h1.string = title
+                guide.insert(0, h1)
 
         for category in soup.find_all("category"):
-            if category.get("title"):
+            title = category.get("title")
+            if isinstance(title, str) and title:
                 h2 = soup.new_tag("h2")
-                h2.string = category.get("title")
+                h2.string = title
                 category.insert(0, h2)
 
         for sp in soup.find_all("stylepoint"):
-            if sp.get("title"):
+            title = sp.get("title")
+            if isinstance(title, str) and title:
                 h3 = soup.new_tag("h3")
-                h3.string = sp.get("title")
+                h3.string = title
                 sp.insert(0, h3)
 
         for summary in soup.find_all("summary"):
@@ -208,7 +214,8 @@ def get_guide(language: str, remote: bool = False) -> str:
         error_msg = f"Language '{language}' is not supported."
         logger.warning(error_msg)
         raise click.UsageError(
-            f"{error_msg} Supported languages: {', '.join(sorted(LANGUAGE_MAP.keys()))}"
+            f"{error_msg} Supported languages: "
+            f"{', '.join(sorted(LANGUAGE_MAP.keys()))}"
         )
 
     local_path = get_local_path(filename)
@@ -249,11 +256,18 @@ def cli(ctx: click.Context, verbose: bool) -> None:
 @cli.command()
 @click.argument("language")
 @click.option(
-    "--output", "-o", type=click.Path(), help="Path to save the style guide markdown."
+    "--output",
+    "-o",
+    type=click.Path(),
+    help="Path to save the style guide markdown.",
 )
-@click.option("--remote", "-r", is_flag=True, help="Force fetching from the web.")
+@click.option(
+    "--remote", "-r", is_flag=True, help="Force fetching from the web."
+)
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging.")
-def guide(language: str, output: Optional[str], remote: bool, verbose: bool) -> None:
+def guide(
+    language: str, output: Optional[str], remote: bool, verbose: bool
+) -> None:
     """Fetch the style guide for a specific LANGUAGE."""
     if verbose:
         logger.setLevel(logging.DEBUG)
@@ -314,7 +328,9 @@ def sync(verbose: bool) -> None:
             failure_count += 1
 
     logger.info(
-        "Sync complete. Successes: %d, Failures: %d", success_count, failure_count
+        "Sync complete. Successes: %d, Failures: %d",
+        success_count,
+        failure_count,
     )
 
 
@@ -341,7 +357,9 @@ def languages() -> None:
 
 @cli.command()
 @click.argument("paths", nargs=-1, type=click.Path(exists=True))
-@click.option("--fix", is_flag=True, help="Automatically fix issues if possible.")
+@click.option(
+    "--fix", is_flag=True, help="Automatically fix issues if possible."
+)
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging.")
 def check(paths: Sequence[str], fix: bool, verbose: bool) -> None:
     """Run relevant formatters and linters for given paths."""
@@ -372,8 +390,10 @@ def _check_path(path: Path, project_root: Path, fix: bool = False) -> None:
             _run_tool(tool["name"], tool, fix=fix)
 
 
-def _should_run_tool(tool: dict[str, Any], path: Path, project_root: Path) -> bool:
-    """Determine if a tool should be run on the given path based on triggers and extensions.
+def _should_run_tool(
+    tool: dict[str, Any], path: Path, project_root: Path
+) -> bool:
+    """Determine if a tool should run based on triggers and extensions.
 
     Args:
         tool: The tool configuration dictionary.
@@ -454,8 +474,10 @@ def _default_config_args(
     return ["--config", str(_bundled_config(tool_name))]
 
 
-def _get_tool_definitions(path: Path, project_root: Path) -> list[dict[str, Any]]:
-    """Define supported tools and their associated triggers, extensions, and commands.
+def _get_tool_definitions(
+    path: Path, project_root: Path
+) -> list[dict[str, Any]]:
+    """Define supported tools with their triggers, extensions, and commands.
 
     Args:
         path: The path being checked.
@@ -470,12 +492,20 @@ def _get_tool_definitions(path: Path, project_root: Path) -> list[dict[str, Any]
     ruff_config = _default_config_args(
         project_root, ["ruff.toml", ".ruff.toml"], "ruff"
     )
-    pyrefly_config = _default_config_args(project_root, ["pyrefly.toml"], "pyrefly")
+    pyrefly_config = _default_config_args(
+        project_root, ["pyrefly.toml"], "pyrefly"
+    )
 
     return [
         {
             "name": "ruff",
-            "check": ["ruff", "check", "--force-exclude", *ruff_config, path_str],
+            "check": [
+                "ruff",
+                "check",
+                "--force-exclude",
+                *ruff_config,
+                path_str,
+            ],
             "check_format": [
                 "ruff",
                 "format",
@@ -492,7 +522,13 @@ def _get_tool_definitions(path: Path, project_root: Path) -> list[dict[str, Any]
                 *ruff_config,
                 path_str,
             ],
-            "format": ["ruff", "format", "--force-exclude", *ruff_config, path_str],
+            "format": [
+                "ruff",
+                "format",
+                "--force-exclude",
+                *ruff_config,
+                path_str,
+            ],
             "trigger": ["pyproject.toml", "ruff.toml", ".ruff.toml"],
             "extensions": [".py"],
         },
@@ -626,36 +662,39 @@ def _run_tool(
 
     executable = str(cmd[0])
     if not shutil.which(executable):
-        logger.debug("Tool %s (%s) not found in PATH, skipping.", tool_name, executable)
+        logger.debug(
+            "Tool %s (%s) not found in PATH, skipping.", tool_name, executable
+        )
         return
 
     logger.info("Running %s...", tool_name)
     try:
         if fix:
-            # 1. Run formatters (if available) - these are expected to modify files
+            # 1. Run formatters (if available) - these are expected to
+            # modify files
             if "format" in tool_config:
                 _execute_tool_command(tool_config["format"])
 
             # 2. Run fixers (if available) - these apply automatic linting fixes
             if "fix" in tool_config:
                 _execute_tool_command(tool_config["fix"])
-        else:
-            # 1. Run check_format (if available) - check-only
-            if "check_format" in tool_config:
-                logger.debug("Executing: %s", " ".join(tool_config["check_format"]))
-                result = subprocess.run(
-                    tool_config["check_format"],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                    timeout=DEFAULT_TIMEOUT,
+        # 1. Run check_format (if available) - check-only
+        elif "check_format" in tool_config:
+            logger.debug("Executing: %s", " ".join(tool_config["check_format"]))
+            result = subprocess.run(
+                tool_config["check_format"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=DEFAULT_TIMEOUT,
+            )
+            if result.returncode != 0 or (
+                tool_name == "go fmt" and result.stdout.strip()
+            ):
+                click.echo(
+                    f"--- {tool_name} formatting findings ---\n"
+                    f"{result.stdout}\n{result.stderr}"
                 )
-                if result.returncode != 0 or (
-                    tool_name == "go fmt" and result.stdout.strip()
-                ):
-                    click.echo(
-                        f"--- {tool_name} formatting findings ---\n{result.stdout}\n{result.stderr}"
-                    )
 
         # 3. Run checks and report findings - these provide feedback to the user
         if "check" in tool_config:
@@ -669,7 +708,8 @@ def _run_tool(
             )
             if result.returncode != 0:
                 click.echo(
-                    f"--- {tool_name} findings ---\n{result.stdout}\n{result.stderr}"
+                    f"--- {tool_name} findings ---\n"
+                    f"{result.stdout}\n{result.stderr}"
                 )
 
     except subprocess.CalledProcessError as e:
@@ -683,16 +723,19 @@ def _run_tool(
 
 
 def _execute_tool_command(cmd: list[str]) -> None:
-    """Execute a tool command and raise CalledProcessError if it returns a non-zero exit code.
+    """Execute a tool command, raising if it exits with a non-zero code.
 
     Args:
         cmd: The command list to execute.
 
     Raises:
-        subprocess.CalledProcessError: If the command returns a non-zero exit code.
+        subprocess.CalledProcessError: If the command returns a non-zero
+            exit code.
     """
     logger.debug("Executing: %s", " ".join(cmd))
-    subprocess.run(cmd, capture_output=True, check=True, timeout=DEFAULT_TIMEOUT)
+    subprocess.run(
+        cmd, capture_output=True, check=True, timeout=DEFAULT_TIMEOUT
+    )
 
 
 # Main entry point for the CLI
