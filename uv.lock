@@ -193,7 +193,7 @@ wheels = [
 ]
 
 [[package]]
-name = "readability"
+name = "readability-cli"
 version = "0.4.0"
 source = { editable = "." }
 dependencies = [

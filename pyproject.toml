@@ -1,5 +1,5 @@
 [project]
-name = "readability"
+name = "readability-cli"
 version = "0.4.0"
 description = "A CLI to lint, format, and type-check code with Google-style defaults, and pull Google style guides in markdown format."
 readme = "README.md"
@@ -10,6 +10,10 @@ dependencies = [
     "markdownify>=1.2.2",
     "requests>=2.33.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/owahltinez/readability"
+Repository = "https://github.com/owahltinez/readability"
 
 [project.scripts]
 readability = "readability:main"
