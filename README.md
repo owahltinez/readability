@@ -176,3 +176,17 @@ Check code style with `ruff`:
 uv run ruff check .
 uv run ruff format .
 ```
+
+### Releasing
+
+Releases are published to PyPI as
+[`readability-cli`](https://pypi.org/project/readability-cli/) via trusted
+publishing: pushing a `v*` tag triggers the `publish.yml` GitHub Actions
+workflow, which builds the package with `uv build` and uploads it.
+
+```bash
+# 1. Bump the version in pyproject.toml, commit, and push
+# 2. Tag the release and push the tag
+git tag v0.4.1
+git push origin v0.4.1
+```
