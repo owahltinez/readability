@@ -23,10 +23,10 @@ You can run the tool directly without installing it using `uvx`:
 
 ```bash
 # Check and fix formatting for the current directory
-uvx --from git+https://github.com/owahltinez/readability.git readability check . --fix
+uvx --from readability-cli readability check . --fix
 
 # Get the Python style guide
-uvx --from git+https://github.com/owahltinez/readability.git readability guide python
+uvx --from readability-cli readability guide python
 ```
 
 ## Installation
@@ -35,7 +35,7 @@ Install it as a global tool with `uv`:
 
 ```bash
 # Install the readability tool
-uv tool install git+https://github.com/owahltinez/readability.git
+uv tool install readability-cli
 
 # Use it anywhere
 readability check .
