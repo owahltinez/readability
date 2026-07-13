@@ -1,42 +1,50 @@
 # Readability
 
-A simple CLI tool to pull the latest style guides from Google for various programming languages in Markdown format. This is ideal for AI agents or developers who need quick access to style conventions without browsing HTML pages.
+A CLI tool that keeps code aligned with Google style conventions. It runs the
+right linters, formatters, and type checkers for your project with sensible
+defaults, and serves the official Google style guides in Markdown format. This
+is ideal for AI agents or developers who want consistent code quality checks
+and quick access to style conventions without browsing HTML pages.
 
 ## Features
 
-- Supports multiple languages (Python, Shell, C++, Java, JS/TS, Go, etc.).
-- **Linting & Formatting**: A `check` command that automatically detects and runs relevant tools (Ruff, Pyrefly, Biome, Prettier, Go Fmt) for your project.
-- **Sensible Defaults**: Bundled Google-style configurations for Ruff and Pyrefly are used automatically when a project does not define its own.
-- **Offline Mode**: Local caching of style guides for fast, offline access.
-- **Sync Command**: Easily update all local guides with a single command.
-- Converts HTML-based style guides to Markdown using `markdownify`.
-- Allows saving the guide to a file or printing it to stdout.
+- **Linting & Formatting**: A `check` command that automatically detects and
+  runs relevant tools (Ruff, Pyrefly, Biome, Prettier, gofmt) for your project.
+- **Sensible Defaults**: Bundled Google-style configurations for Ruff and
+  Pyrefly are used automatically when a project does not define its own.
+- **Style Guides**: A `guide` command that fetches the latest Google style
+  guides (Python, Shell, C++, Java, JS/TS, Go, etc.) converted to Markdown.
+- **Offline Mode**: Local caching of style guides for fast, offline access,
+  kept fresh with a single `sync` command.
 
-## Quick Start (No Installation)
+## Quick Start
 
-You can run the tool directly without cloning the repository using `uvx`:
+You can run the tool directly without installing it using `uvx`:
 
 ```bash
+# Check and fix formatting for the current directory
+uvx --from git+https://github.com/owahltinez/readability.git readability check . --fix
+
 # Get the Python style guide
 uvx --from git+https://github.com/owahltinez/readability.git readability guide python
-
-# Save the C++ style guide to a file
-uvx --from git+https://github.com/owahltinez/readability.git readability guide cpp -o cppguide.md
 ```
 
-Alternatively, you can install it as a tool:
+## Installation
+
+Install it as a global tool with `uv`:
 
 ```bash
 # Install the readability tool
 uv tool install git+https://github.com/owahltinez/readability.git
 
 # Use it anywhere
+readability check .
 readability guide python
 ```
 
-## Installation (For Development)
+### For Development
 
-This project uses `uv` for dependency management.
+This project uses `uv` for dependency management:
 
 ```bash
 # Clone the repository
@@ -50,9 +58,51 @@ uv sync
 uv run readability sync
 ```
 
-## Usage
+## Checking and Formatting
 
-You can run the tool using `uv run readability` or after installing it as a tool:
+The `check` command identifies and runs relevant linting and formatting tools
+based on file extensions and the presence of configuration files (triggers) in
+your project root:
+
+```bash
+# Run checks on the current directory
+readability check .
+
+# Check specific files or directories
+readability check src/ tests/ main.py
+
+# Automatically fix and format files
+readability check . --fix
+```
+
+### Supported Tools
+
+| Tool | Supported Extensions | Trigger Files |
+|------|----------------------|---------------|
+| **Ruff** | `.py` | `pyproject.toml`, `ruff.toml`, `.ruff.toml` |
+| **Pyrefly** | `.py` | `pyproject.toml`, `pyrefly.toml` |
+| **Biome** | `.js`, `.ts`, `.jsx`, `.tsx`, `.json`, `.jsonc`, `.css`, `.html` | `biome.json`, `biome.jsonc` |
+| **Prettier** | `.js`, `.ts`, `.jsx`, `.tsx`, `.json`, `.css`, `.scss`, `.html`, `.md`, `.yml`, `.yaml` | `.prettierrc*`, `prettier.config.*` |
+| **gofmt** | `.go` | `go.mod` |
+
+The command will only run a tool if its trigger file exists in the current
+working directory and the tool is available in your `PATH`. For `biome` and
+`prettier`, it attempts to run them via `npx`.
+
+### Default Configurations
+
+For Ruff and Pyrefly, bundled defaults based on the
+[Google Python style guide](https://google.github.io/styleguide/pyguide.html)
+(80-column lines, Google docstring convention, import ordering, full type
+checking) are applied when the project does not define its own configuration.
+To override them, add a `[tool.ruff]` or `[tool.pyrefly]` section to your
+`pyproject.toml` (or a dedicated `ruff.toml` / `pyrefly.toml`) — any
+project-level configuration takes full precedence over the bundled defaults.
+
+## Style Guides
+
+The `guide` command prints a Google style guide as Markdown, using the local
+cache when available:
 
 ```bash
 # Get the Python style guide (uses local cache if available)
@@ -66,48 +116,13 @@ readability guide cpp --output cpp-style.md
 
 # Synchronize all supported style guides to the local cache
 readability sync
-
-# List all supported languages and their aliases
-readability languages
-
-# Check and format your code
-readability check .
 ```
-
-### Checking and Formatting
-
-The `check` command identifies and runs relevant linting and formatting tools based on file extensions and the presence of configuration files (triggers) in your project root.
-
-```bash
-# Run checks on the current directory
-readability check .
-
-# Check specific files or directories
-readability check src/ tests/ main.py
-
-# Automatically fix and format files
-readability check . --fix
-```
-
-#### Supported Tools
-
-| Tool | Supported Extensions | Trigger Files |
-|------|----------------------|---------------|
-| **Ruff** | `.py` | `pyproject.toml`, `ruff.toml`, `.ruff.toml` |
-| **Pyrefly** | `.py` | `pyproject.toml`, `pyrefly.toml` |
-| **Biome** | `.js`, `.ts`, `.jsx`, `.tsx`, `.json`, `.jsonc`, `.css`, `.html` | `biome.json`, `biome.jsonc` |
-| **Prettier** | `.js`, `.ts`, `.jsx`, `.tsx`, `.json`, `.css`, `.scss`, `.html`, `.md`, `.yml`, `.yaml` | `.prettierrc*`, `prettier.config.*` |
-| **Go Fmt** | `.go` | `go.mod` |
-
-The command will only run a tool if its trigger file exists in the current working directory and the tool is available in your `PATH`. For `biome` and `prettier`, it attempts to run them via `npx`.
-
-#### Default Configurations
-
-For Ruff and Pyrefly, bundled defaults based on the [Google Python style guide](https://google.github.io/styleguide/pyguide.html) (80-column lines, Google docstring convention, import ordering, full type checking) are applied when the project does not define its own configuration. To override them, add a `[tool.ruff]` or `[tool.pyrefly]` section to your `pyproject.toml` (or a dedicated `ruff.toml` / `pyrefly.toml`) — any project-level configuration takes full precedence over the bundled defaults.
 
 ### Supported Languages
 
-Use `readability languages` to see a full list of supported languages and their aliases. This command also indicates which guides are currently available in the local cache with a `[cached]` label:
+Use `readability languages` to see a full list of supported languages and
+their aliases. This command also indicates which guides are currently
+available in the local cache with a `[cached]` label:
 
 ```bash
 $ readability languages
@@ -128,17 +143,19 @@ Supported languages and their aliases:
   - vim [cached]
 ```
 
-## Automatic Updates
+### Offline Mode
 
-The style guides in the `guides/` directory are automatically synchronized weekly from the official [Google Style Guides](https://google.github.io/styleguide/) repository via GitHub Actions.
+The tool stores local copies of the style guides in the `guides/` directory
+and the `guide` command uses these local files when they exist. The bundled
+copies are automatically synchronized weekly from the official
+[Google Style Guides](https://google.github.io/styleguide/) repository via
+GitHub Actions, and you can refresh your local cache at any time with the
+`sync` command.
 
-## Offline Mode
-
-The tool stores local copies of the style guides in the `guides/` directory. By default, `guide` will use these local files if they exist. Use the `sync` command to refresh these files from the web.
-
-### Custom Cache Location
-
-You can override the default `guides/` directory by setting the `READABILITY_CACHE` environment variable. This is useful if you want to store the guides in a specific location or share them across different installations.
+You can override the default `guides/` directory by setting the
+`READABILITY_CACHE` environment variable. This is useful if you want to store
+the guides in a specific location or share them across different
+installations:
 
 ```bash
 export READABILITY_CACHE=/path/to/my/guides
