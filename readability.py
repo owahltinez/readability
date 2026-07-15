@@ -362,32 +362,47 @@ def languages() -> None:
 )
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging.")
 def check(paths: Sequence[str], fix: bool, verbose: bool) -> None:
-    """Run relevant formatters and linters for given paths."""
+    """Run relevant formatters and linters for given paths.
+
+    Exits with a non-zero status code if any tool reports findings, so the
+    command can gate scripts and CI.
+    """
     if verbose:
         logger.setLevel(logging.DEBUG)
 
     # Resolve project root once for trigger file checking
     project_root = Path.cwd()
 
-    # Process each provided path independently
+    # Process each provided path independently, tracking findings across
+    # all of them so the exit code reflects the overall result
+    found_issues = False
     for path_str in paths:
-        _check_path(Path(path_str), project_root, fix=fix)
+        found_issues |= _check_path(Path(path_str), project_root, fix=fix)
+
+    if found_issues:
+        sys.exit(1)
 
 
-def _check_path(path: Path, project_root: Path, fix: bool = False) -> None:
+def _check_path(path: Path, project_root: Path, fix: bool = False) -> bool:
     """Apply relevant tools to a single path.
 
     Args:
         path: The path (file or directory) to check.
         project_root: The root of the project for trigger file discovery.
         fix: Whether to apply automatic fixes.
+
+    Returns:
+        True if any tool reported findings, False otherwise.
     """
     logger.info("Checking path: %s", path)
 
     # Iterate through all supported tool definitions
+    found_issues = False
     for tool in _get_tool_definitions(path, project_root):
         if _should_run_tool(tool, path, project_root):
-            _run_tool(tool["name"], tool, fix=fix)
+            found_issues |= _run_tool(tool["name"], tool, fix=fix)
+
+    return found_issues
 
 
 def _should_run_tool(
@@ -642,13 +657,16 @@ def _run_tool(
     tool_name: str,
     tool_config: dict[str, Any],
     fix: bool = False,
-) -> None:
+) -> bool:
     """Orchestrate the execution of a specific formatting or linting tool.
 
     Args:
         tool_name: The name of the tool to run.
         tool_config: The tool configuration dictionary.
         fix: Whether to apply automatic fixes.
+
+    Returns:
+        True if the tool reported findings, False otherwise.
     """
     # Identify the primary command to check for executable availability
     cmd = (
@@ -658,16 +676,17 @@ def _run_tool(
         or tool_config.get("check_format")
     )
     if not cmd:
-        return
+        return False
 
     executable = str(cmd[0])
     if not shutil.which(executable):
         logger.debug(
             "Tool %s (%s) not found in PATH, skipping.", tool_name, executable
         )
-        return
+        return False
 
     logger.info("Running %s...", tool_name)
+    found_issues = False
     try:
         if fix:
             # 1. Run formatters (if available) - these are expected to
@@ -691,6 +710,7 @@ def _run_tool(
             if result.returncode != 0 or (
                 tool_name == "go fmt" and result.stdout.strip()
             ):
+                found_issues = True
                 click.echo(
                     f"--- {tool_name} formatting findings ---\n"
                     f"{result.stdout}\n{result.stderr}"
@@ -707,6 +727,7 @@ def _run_tool(
                 timeout=DEFAULT_TIMEOUT,
             )
             if result.returncode != 0:
+                found_issues = True
                 click.echo(
                     f"--- {tool_name} findings ---\n"
                     f"{result.stdout}\n{result.stderr}"
@@ -720,6 +741,8 @@ def _run_tool(
             logger.debug("STDERR: %s", e.stderr)
     except (subprocess.SubprocessError, OSError) as e:
         logger.warning("Unexpected error while running %s: %s", tool_name, e)
+
+    return found_issues
 
 
 def _execute_tool_command(cmd: list[str]) -> None:

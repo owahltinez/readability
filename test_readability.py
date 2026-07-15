@@ -559,3 +559,107 @@ def test_bundled_default_configs_are_valid(tmp_path: Path) -> None:
     ruff_config = tomllib.loads(_bundled_config("ruff").read_text())
     assert ruff_config["line-length"] == 80
     assert ruff_config["lint"]["pydocstyle"]["convention"] == "google"
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_check_command_exits_nonzero_on_format_findings(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """Tests that formatting findings produce a non-zero exit code.
+
+    Args:
+        mock_run: The mocked subprocess.run function.
+        mock_which: The mocked shutil.which function.
+        tmp_path: The temporary directory fixture.
+    """
+    mock_which.side_effect = lambda x: x if x == "ruff" else None
+
+    # Only `ruff format --check` reports findings
+    def run_side_effect(cmd, **kwargs):
+        if "format" in cmd:
+            return MagicMock(
+                returncode=1, stdout="Would reformat: script.py", stderr=""
+            )
+        return MagicMock(returncode=0, stdout="", stderr="")
+
+    mock_run.side_effect = run_side_effect
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("pyproject.toml").touch()
+        Path("script.py").touch()
+
+        result = runner.invoke(cli, ["check", "script.py"])
+
+    assert "formatting findings" in result.output
+    assert result.exit_code == 1
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_check_command_exits_nonzero_on_check_findings(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """Tests that linter findings produce a non-zero exit code.
+
+    Args:
+        mock_run: The mocked subprocess.run function.
+        mock_which: The mocked shutil.which function.
+        tmp_path: The temporary directory fixture.
+    """
+    mock_which.side_effect = lambda x: x if x == "ruff" else None
+
+    # Only `ruff check` reports findings
+    def run_side_effect(cmd, **kwargs):
+        if "check" in cmd and "format" not in cmd:
+            return MagicMock(
+                returncode=1, stdout="E501 line too long", stderr=""
+            )
+        return MagicMock(returncode=0, stdout="", stderr="")
+
+    mock_run.side_effect = run_side_effect
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("pyproject.toml").touch()
+        Path("script.py").touch()
+
+        result = runner.invoke(cli, ["check", "script.py"])
+
+    assert "findings" in result.output
+    assert result.exit_code == 1
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_check_command_fix_exits_nonzero_on_remaining_findings(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """Tests that findings remaining after --fix produce a non-zero exit.
+
+    Args:
+        mock_run: The mocked subprocess.run function.
+        mock_which: The mocked shutil.which function.
+        tmp_path: The temporary directory fixture.
+    """
+    mock_which.side_effect = lambda x: x if x == "ruff" else None
+
+    # Fixers succeed, but the check step still reports findings
+    def run_side_effect(cmd, **kwargs):
+        if "check" in cmd and "--fix" not in cmd:
+            return MagicMock(
+                returncode=1, stdout="E501 line too long", stderr=""
+            )
+        return MagicMock(returncode=0, stdout="", stderr="")
+
+    mock_run.side_effect = run_side_effect
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("pyproject.toml").touch()
+        Path("script.py").touch()
+
+        result = runner.invoke(cli, ["check", "--fix", "script.py"])
+
+    assert result.exit_code == 1
