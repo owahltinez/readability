@@ -1,6 +1,6 @@
 [project]
 name = "readability-cli"
-version = "0.4.0"
+version = "0.5.0"
 description = "A CLI to lint, format, and type-check code with Google-style defaults, and pull Google style guides in markdown format."
 readme = "README.md"
 requires-python = ">=3.12"
