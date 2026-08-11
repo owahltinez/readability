@@ -293,6 +293,20 @@ class Heading:
 def _iter_heading_lines(content: str) -> Iterator[tuple[int, int, str]]:
     """Yield the headings of a Markdown document, skipping fenced code.
 
+    This is a heading scanner, NOT a Markdown parser, and must not grow into
+    one. It is sound only because the job is narrow and the input is known:
+    block-level ATX headings, over the fourteen guides shipped here, every
+    one of which is asserted in the test suite. Fenced code is skipped
+    because a guide whose language comments with '#' would otherwise offer
+    145 fragments of sample code as sections.
+
+    Reach for a real CommonMark parser (mistletoe has no dependencies of its
+    own; markdown-it-py is far more widely deployed) the moment anything
+    needs more than this: inline structure such as links or emphasis, block
+    nesting, setext headings, indented code blocks, or Markdown from a
+    source other than these guides. Extending the regexes to cover those is
+    how a scanner turns into a bad parser.
+
     Args:
         content: The full Markdown text of a style guide.
 

@@ -10,11 +10,15 @@ import requests
 from click.testing import CliRunner
 
 from readability import (
+    LANGUAGE_MAP,
     _bundled_config,
     _get_tool_definitions,
     _has_project_config,
+    _iter_heading_lines,
+    _unique_reference,
     cli,
     convert_to_markdown,
+    find_headings,
     get_guide,
     get_guide_content,
     get_guides_dir,
@@ -1162,3 +1166,134 @@ def test_cli_section_heading_containing_an_angle_bracket(
     assert result.exit_code == 0
     assert result.stdout.startswith("### `Array<T>` Type")
     assert "Array body." in result.stdout
+
+
+# The heading scanner is deliberately not a Markdown parser (see the note on
+# _iter_heading_lines). These tests are the evidence for that decision: the
+# scope it covers, the constructs it rejects, and its behaviour over every
+# guide actually shipped. A failure here means the scope has been outgrown.
+
+
+def test_heading_scanner_rejects_non_headings() -> None:
+    """Only ATX headings count, at the levels Markdown defines."""
+    content = "\n".join(
+        [
+            "####### seven hashes is not a heading",
+            "#NoSpaceAfterHash",
+            "text # not at line start",
+            "## Real Heading ##",
+        ]
+    )
+
+    headings = [text for _, _, text in _iter_heading_lines(content)]
+
+    assert headings == ["Real Heading"]
+
+
+def test_heading_scanner_handles_both_fence_styles() -> None:
+    """Guides use backticks, but tildes are equally valid Markdown."""
+    content = "\n".join(
+        [
+            "# Title",
+            "~~~",
+            "# tilde-fenced comment",
+            "~~~",
+            "```python",
+            "# backtick-fenced comment",
+            "```",
+            "   ```",
+            "# indented-fence comment",
+            "   ```",
+            "## After",
+        ]
+    )
+
+    headings = [text for _, _, text in _iter_heading_lines(content)]
+
+    assert headings == ["Title", "After"]
+
+
+def test_heading_scanner_treats_an_unclosed_fence_as_open() -> None:
+    """A truncated document must not resume reporting code as headings."""
+    content = "# Title\n```\n# still code\n"
+
+    headings = [text for _, _, text in _iter_heading_lines(content)]
+
+    assert headings == ["Title"]
+
+
+def test_heading_scanner_reports_line_numbers() -> None:
+    """Section slicing depends on the line each heading sits on."""
+    content = "intro\n\n# Title\nbody\n\n## Next\n"
+
+    found = [(line, level) for line, level, _ in _iter_heading_lines(content)]
+
+    assert found == [(2, 1), (5, 2)]
+
+
+def _shipped_guides() -> list[tuple[str, str]]:
+    """Return (language, content) for every guide present on disk."""
+    seen: set[str] = set()
+    guides = []
+    for language, filename in sorted(LANGUAGE_MAP.items()):
+        path = get_local_path(filename)
+        if filename in seen or not os.path.exists(path):
+            continue
+        seen.add(filename)
+        with open(path, "r", encoding="utf-8") as f:
+            guides.append((language, f.read()))
+    return guides
+
+
+def test_every_shipped_guide_parses_into_unique_sections() -> None:
+    """The whole corpus is the evidence for a hand-rolled scanner.
+
+    Each guide must yield at least one heading, indices unique enough to
+    address any section, and no heading drawn from inside a code sample.
+    """
+    guides = _shipped_guides()
+    assert len(guides) >= 10, f"expected the shipped corpus, got {len(guides)}"
+
+    for language, content in guides:
+        headings = parse_headings(content)
+        assert headings, f"{language}: no headings found"
+
+        indices = [h.index for h in headings]
+        assert len(set(indices)) == len(indices), (
+            f"{language}: duplicate positional indices"
+        )
+
+        # A heading taken from inside a fence would carry a comment marker
+        # or a shebang, neither of which appears in a real guide heading.
+        for heading in headings:
+            assert not heading.title.startswith("!"), (
+                f"{language}: shebang parsed as heading: {heading.title!r}"
+            )
+
+
+def test_every_shipped_guide_heading_is_addressable() -> None:
+    """Every heading in the corpus must be reachable by some reference.
+
+    A guide's own title carries no positional index — it is the whole
+    document rather than a section within it — so it is addressed by name.
+    Every other heading resolves by its index alone.
+    """
+    for language, content in _shipped_guides():
+        headings = parse_headings(content)
+
+        titles = [h for h in headings if not h.index]
+        assert len(titles) == 1, (
+            f"{language}: expected one unindexed title, got {len(titles)}"
+        )
+        assert titles[0] is headings[0], f"{language}: title is not first"
+
+        # An index alone is not always enough: where a guide prints its own
+        # numbers those drift from the tree, so one string can name two
+        # headings. What must always hold is that some reference resolves.
+        for position, heading in enumerate(headings):
+            reference = _unique_reference(headings, position).strip('"')
+            matches = find_headings(headings, reference)
+            assert matches == [position], (
+                f"{language}: {reference!r} for {heading.title!r} "
+                f"resolved to {matches}, expected [{position}]"
+            )
