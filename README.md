@@ -13,7 +13,8 @@ and quick access to style conventions without browsing HTML pages.
 - **Sensible Defaults**: Bundled Google-style configurations for Ruff and
   Pyrefly are used automatically when a project does not define its own.
 - **Style Guides**: A `guide` command that fetches the latest Google style
-  guides (Python, Shell, C++, Java, JS/TS, Go, etc.) converted to Markdown.
+  guides (Python, Shell, C++, Java, JS/TS, Go, etc.) converted to Markdown,
+  navigable by outline and by section rather than read whole.
 - **Offline Mode**: Local caching of style guides for fast, offline access,
   kept fresh with a single `sync` command.
 
@@ -126,6 +127,61 @@ A guide can exceed 100 KB, so `--path` is the cheap way to consult one: the
 file is already on disk, and searching it beats reading it whole or writing
 out a second copy. It is also what a coding agent should use, rather than
 redirecting the guide into a repository.
+
+### Navigating a Guide
+
+`--outline` lists a guide's headings and `--section` prints just one of them,
+which turns "read 200 KB" into "list the sections, fetch the one you need":
+
+```bash
+# List every heading, with the index to pass to --section
+readability guide cpp --outline
+
+# Only the top two levels, for a bird's eye view of a large guide
+readability guide cpp --outline --depth 2
+
+# Print one section: its heading and everything nested under it
+readability guide shell --section "Function Comments"
+readability guide cpp --section 10.4
+
+# Sections can be saved like whole guides can
+readability guide python --section "Imports" --output imports.md
+```
+
+A section reference can be any of the following:
+
+| Reference | Example |
+|-----------|---------|
+| Outline index | `--section 2.2.1` |
+| A section number the guide prints itself | `--section 2.2.4` |
+| Heading text, case-insensitive, or its slug | `--section "function comments"` |
+| A parent-scoped path, spaces around the `>` | `--section "Imports > Decision"` |
+
+Whole matches are preferred; a reference that matches nothing in full is
+retried as a substring of the heading text.
+
+Only three of the shipped guides (Python, JavaScript, Java) number their own
+headings, so heading text is the reference that works everywhere. The outline
+index is assigned from each heading's position in the tree, which makes it
+unique even where a guide repeats a heading — `Definition`, `Pros`, `Cons`,
+and `Decision` appear under every rule in the Python guide. Prefer heading
+text when saving a reference for later: indices shift when a guide is
+re-synced, while headings are stable.
+
+A reference that matches several headings is reported rather than guessed at,
+listing the index and path of every candidate on stderr:
+
+```bash
+$ readability guide python --section Decision
+Error: 'Decision' matches 19 headings in the 'python' guide. Repeat with one of:
+  --section 2.1.4 (Python Language Rules > Lint > Decision)
+  --section 2.2.4 (Python Language Rules > Imports > Decision)
+  ...
+```
+
+Content goes to stdout and diagnostics to stderr, so both flags are safe to
+pipe. Headings inside fenced code blocks are ignored, which matters for the
+Shell and Python guides where `#` starts a comment.
 
 ### Supported Languages
 

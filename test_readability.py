@@ -19,6 +19,7 @@ from readability import (
     get_guide_content,
     get_guides_dir,
     get_local_path,
+    parse_headings,
 )
 
 
@@ -709,3 +710,455 @@ def test_check_command_fix_exits_nonzero_on_remaining_findings(
         result = runner.invoke(cli, ["check", "--fix", "script.py"])
 
     assert result.exit_code == 1
+
+
+# A miniature guide with numbered headings, repeated leaf headings, and a
+# fenced code block whose comments look like Markdown headings.
+NUMBERED_GUIDE = """# Sample Style Guide
+
+Intro body.
+
+## 1 Background\x20
+
+Background body.
+
+## 2 Language Rules\x20
+
+### 2.1 Lint\x20
+
+Lint body.
+
+#### 2.1.4 Decision\x20
+
+Run the linter over your code.
+
+### 2.2 Imports\x20
+
+Imports body.
+
+#### 2.2.4 Decision\x20
+
+Use full package paths.
+
+##### 2.2.4.1 Exemptions\x20
+
+Exemptions body.
+
+## 3 Style\x20
+
+```bash
+# Not a heading
+## Also not a heading
+```
+
+Style body.
+"""
+
+# A miniature guide in the shape of the unnumbered majority (shell, ts, cpp).
+UNNUMBERED_GUIDE = """# Shell Sample Guide
+
+## Background
+
+### Which Shell to Use
+
+Use bash.
+
+## Comments
+
+### File Header
+
+```bash
+#!/bin/bash
+# Perform hot backups of Oracle databases.
+```
+
+Header body.
+
+### Function Comments
+
+Function body.
+"""
+
+
+def _write_guide(
+    tmp_path: Path, content: str, name: str = "pyguide.md"
+) -> None:
+    """Places a guide in a temporary cache directory."""
+    (tmp_path / name).write_text(content)
+
+
+def _outline_entry(lines: list[str], heading_text: str) -> str:
+    """Returns the single outline line that ends with the given heading."""
+    matches = [ln for ln in lines if ln.rstrip().endswith(heading_text)]
+    assert len(matches) == 1, f"expected one entry for {heading_text!r}"
+    return matches[0].strip()
+
+
+def test_parse_headings_ignores_fenced_code_blocks() -> None:
+    """Tests that comments inside code fences are not read as headings."""
+    headings = parse_headings(NUMBERED_GUIDE)
+
+    titles = [h.title for h in headings]
+    assert "Not a heading" not in titles
+    assert "Also not a heading" not in titles
+    assert titles.count("Decision") == 2
+
+
+def test_parse_headings_splits_section_numbers() -> None:
+    """Tests that a leading section number is split from the heading text."""
+    headings = {h.title: h for h in parse_headings(NUMBERED_GUIDE)}
+
+    assert headings["Imports"].number == "2.2"
+    assert headings["Imports"].level == 3
+    assert headings["Imports"].text == "2.2 Imports"
+
+    # Unnumbered guides leave the number empty and keep the full title
+    unnumbered = {h.title: h for h in parse_headings(UNNUMBERED_GUIDE)}
+    assert unnumbered["Which Shell to Use"].number == ""
+    assert unnumbered["Which Shell to Use"].text == "Which Shell to Use"
+
+
+def test_parse_headings_assigns_positional_indices() -> None:
+    """Tests that every heading gets a unique index from its tree position."""
+    headings = parse_headings(NUMBERED_GUIDE)
+
+    # The document title is the tree root, so it carries no index
+    assert headings[0].index == ""
+
+    indices = {h.text: h.index for h in headings}
+    assert indices["1 Background"] == "1"
+    assert indices["2.2 Imports"] == "2.2"
+
+    # Repeated headings are distinguished by position, not text
+    assert indices["2.1.4 Decision"] == "2.1.1"
+    assert indices["2.2.4 Decision"] == "2.2.1"
+    assert indices["2.2.4.1 Exemptions"] == "2.2.1.1"
+
+    # Indices are unique by construction, even where the guide numbers nothing
+    unnumbered = [h.index for h in parse_headings(UNNUMBERED_GUIDE)]
+    assert unnumbered == ["", "1", "1.1", "2", "2.1", "2.2"]
+
+
+def test_parse_headings_indices_survive_skipped_levels() -> None:
+    """Tests that a shallower heading after a deeper one gets its own index.
+
+    Guides skip levels (tsguide follows an h4 with an h3). Counting each level
+    independently rather than counting siblings hands both the same index.
+    """
+    content = "# Guide\n\n## One\n\n#### Deep\n\n### Back\n\n## Two\n"
+
+    assert [h.index for h in parse_headings(content)] == [
+        "",
+        "1",
+        "1.1",
+        "1.2",
+        "2",
+    ]
+
+
+def test_cli_outline_prints_the_heading_tree(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Tests that --outline prints an indexed heading tree, without bodies."""
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    _write_guide(tmp_path, NUMBERED_GUIDE)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["guide", "python", "--outline"])
+
+    assert result.exit_code == 0
+    lines = result.stdout.splitlines()
+
+    # The document title heads the tree and carries no index of its own
+    assert lines[0].strip() == "Sample Style Guide"
+
+    # Every other heading gets a positional index, and keeps its own text
+    assert _outline_entry(lines, "1 Background").startswith("1 ")
+    assert _outline_entry(lines, "2.2 Imports").startswith("2.2 ")
+    assert _outline_entry(lines, "2.2.4 Decision").startswith("2.2.1 ")
+
+    # Bodies stay out of the outline
+    assert "Imports body." not in result.stdout
+
+
+def test_cli_outline_ignores_headings_inside_code_blocks(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Tests that comments in fenced samples never surface as sections."""
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    _write_guide(tmp_path, NUMBERED_GUIDE)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["guide", "python", "--outline"])
+
+    assert result.exit_code == 0
+    assert "Not a heading" not in result.stdout
+    assert "Also not a heading" not in result.stdout
+
+
+def test_cli_outline_depth_limits_the_tree(tmp_path: Path, monkeypatch) -> None:
+    """Tests that --depth trims the outline of a deeply nested guide."""
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    _write_guide(tmp_path, NUMBERED_GUIDE)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["guide", "python", "--outline", "--depth", "3"]
+    )
+
+    assert result.exit_code == 0
+    assert "2 Language Rules" in result.stdout
+    assert "2.1 Lint" in result.stdout
+    assert "Decision" not in result.stdout
+
+
+def test_cli_section_by_number(tmp_path: Path, monkeypatch) -> None:
+    """Tests that a section number works where the guide provides one."""
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    _write_guide(tmp_path, NUMBERED_GUIDE)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["guide", "python", "--section", "2.2"])
+
+    assert result.exit_code == 0
+    assert result.stdout.startswith("### 2.2 Imports")
+    # A section carries its subsections but stops at the next same-level one
+    assert "Use full package paths." in result.stdout
+    assert "Exemptions body." in result.stdout
+    assert "Style body." not in result.stdout
+    assert "Lint body." not in result.stdout
+
+
+def test_cli_section_by_title_is_case_insensitive(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Tests that heading text alone selects a section, ignoring case."""
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    _write_guide(tmp_path, NUMBERED_GUIDE)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["guide", "python", "--section", "imports"])
+
+    assert result.exit_code == 0
+    assert result.stdout.startswith("### 2.2 Imports")
+
+
+def test_cli_section_by_slug_in_an_unnumbered_guide(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Tests lookup in a guide that numbers nothing, which is the norm."""
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    _write_guide(tmp_path, UNNUMBERED_GUIDE, name="shellguide.md")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["guide", "shell", "--section", "which-shell-to-use"]
+    )
+
+    assert result.exit_code == 0
+    assert result.stdout.startswith("### Which Shell to Use")
+    assert "Use bash." in result.stdout
+
+
+def test_cli_section_by_positional_index_without_numbering(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Tests that the index reaches a section in a guide with no numbers."""
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    _write_guide(tmp_path, UNNUMBERED_GUIDE, name="shellguide.md")
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["guide", "shell", "--section", "2.1"])
+
+    assert result.exit_code == 0
+    assert result.stdout.startswith("### File Header")
+    assert "Header body." in result.stdout
+    assert "Function body." not in result.stdout
+
+
+def test_cli_section_keeps_fenced_headings_in_the_body(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Tests that a fenced comment does not truncate the section it sits in."""
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    _write_guide(tmp_path, UNNUMBERED_GUIDE, name="shellguide.md")
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["guide", "shell", "--section", "File Header"])
+
+    assert result.exit_code == 0
+    assert "# Perform hot backups of Oracle databases." in result.stdout
+    assert "Header body." in result.stdout
+    assert "Function body." not in result.stdout
+
+
+def test_cli_section_ambiguous_reports_every_match(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Tests that a repeated heading reports candidates instead of guessing."""
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    _write_guide(tmp_path, NUMBERED_GUIDE)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["guide", "python", "--section", "Decision"])
+
+    assert result.exit_code == 1
+    # Nothing goes to stdout, so a pipeline sees no half-right section
+    assert result.stdout == ""
+    assert "matches 2 headings" in result.stderr
+    assert "Lint > Decision" in result.stderr
+    assert "Imports > Decision" in result.stderr
+
+
+def test_cli_section_path_disambiguates(tmp_path: Path, monkeypatch) -> None:
+    """Tests that a parent-scoped path picks one of several same-named ones."""
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    _write_guide(tmp_path, NUMBERED_GUIDE)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["guide", "python", "--section", "Imports > Decision"]
+    )
+
+    assert result.exit_code == 0
+    assert result.stdout.startswith("#### 2.2.4 Decision")
+    assert "Use full package paths." in result.stdout
+    assert "Run the linter over your code." not in result.stdout
+
+
+def test_cli_section_unknown_reference_fails(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Tests that an unmatched reference fails loudly rather than silently."""
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    _write_guide(tmp_path, NUMBERED_GUIDE)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["guide", "python", "--section", "Concurrency"])
+
+    assert result.exit_code == 1
+    assert result.stdout == ""
+    assert "no heading" in result.stderr.lower()
+    assert "--outline" in result.stderr
+
+
+def test_cli_section_rejects_an_unsupported_language(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Tests that navigation validates the language like the guide does."""
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["guide", "nonexistent", "--outline"])
+
+    assert result.exit_code == 1
+    assert "not supported" in result.output
+
+
+def test_cli_section_drops_the_next_sections_anchors(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Tests that HTML anchors belonging to the next heading are trimmed.
+
+    Guides place a section's anchors on the lines above its heading, so a
+    naive cut would end each section with the next one's link targets.
+    """
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    _write_guide(
+        tmp_path,
+        '# Guide\n\n## First\n\nFirst body.\n\n<a id="s2-second"></a>\n\n'
+        "## Second\n\nSecond body.\n",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["guide", "python", "--section", "First"])
+
+    assert result.exit_code == 0
+    assert result.stdout.strip().endswith("First body.")
+
+
+def test_cli_section_writes_to_an_output_file(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Tests that --output saves the selected section, not the whole guide."""
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    _write_guide(tmp_path, NUMBERED_GUIDE)
+    output_file = tmp_path / "section.md"
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "guide",
+            "python",
+            "--section",
+            "2.2",
+            "--output",
+            str(output_file),
+        ],
+    )
+
+    assert result.exit_code == 0
+    saved = output_file.read_text()
+    assert saved.startswith("### 2.2 Imports")
+    assert "Background body." not in saved
+
+
+def test_cli_section_suggestions_always_resolve(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Tests that every reference offered for an ambiguous one is usable.
+
+    A guide's own numbering can drift from its structure (pyguide's '2.16' is
+    the 15th section), so an index can collide with a printed number. The
+    disambiguation must then offer something other than that same index.
+    """
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    _write_guide(
+        tmp_path,
+        "# Guide\n\n## 1 Alpha\n\nA.\n\n### 1.1 Detail\n\nD.\n\n"
+        "## 3 Beta\n\nB.\n\n## 4 Gamma\n\nG.\n",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["guide", "python", "--section", "3"])
+
+    assert result.exit_code == 1
+    assert "matches 2 headings" in result.stderr
+
+    # Follow each suggestion; all of them must select a single section
+    suggestions = [
+        line.split("--section ", 1)[1].split(" (", 1)[0].strip().strip('"')
+        for line in result.stderr.splitlines()
+        if "--section " in line and line.startswith("  ")
+    ]
+    assert len(suggestions) == 2
+    for suggestion in suggestions:
+        followed = runner.invoke(
+            cli, ["guide", "python", "--section", suggestion]
+        )
+        assert followed.exit_code == 0, f"{suggestion!r} did not resolve"
+
+
+def test_cli_section_heading_containing_an_angle_bracket(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Tests that '>' inside a heading is not read as a path separator.
+
+    The TypeScript guide has a heading named '`Array<T>` Type'.
+    """
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    _write_guide(
+        tmp_path,
+        "# Guide\n\n## Types\n\n### `Array<T>` Type\n\nArray body.\n",
+        name="tsguide.md",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["guide", "typescript", "--section", "Array<T> Type"]
+    )
+
+    assert result.exit_code == 0
+    assert result.stdout.startswith("### `Array<T>` Type")
+    assert "Array body." in result.stdout

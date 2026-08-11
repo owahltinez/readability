@@ -1,13 +1,15 @@
 """CLI for fetching Google style guides and running code quality tools."""
 
+import dataclasses
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tomllib
 import warnings
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Any, Optional
 
@@ -244,6 +246,453 @@ def get_guide(language: str, remote: bool = False) -> str:
     return markdown_content
 
 
+# A fence opens or closes a code block; anything inside is sample code, not
+# document structure. Guides for `#`-commented languages (shell, Python) would
+# otherwise report hundreds of code comments as headings.
+FENCE_PATTERN = re.compile(r"^\s{0,3}(?:```|~~~)")
+
+# Closing hashes are optional in ATX headings and must be space-separated, so
+# a title such as 'C#' keeps its trailing character.
+HEADING_PATTERN = re.compile(r"^(#{1,6})\s+(.*?)(?:\s+#+)?\s*$")
+
+# A section number the document itself prints, e.g. '2.2' in '2.2 Imports'.
+DOCUMENT_NUMBER_PATTERN = re.compile(r"^(\d+(?:\.\d+)*)\.?\s+(.+)$")
+
+# Guides put a heading's link targets on the lines above it, which would
+# otherwise trail the end of the preceding section.
+ANCHOR_PATTERN = re.compile(r'^<a id="[^"]*"></a>$')
+
+# The separator in a scoped reference such as 'Imports > Decision'. Spaces on
+# both sides are required so that a heading like '`Array<T>` Type' stays whole.
+PATH_SEPARATOR_PATTERN = re.compile(r"\s+>\s+")
+
+
+@dataclasses.dataclass(frozen=True)
+class Heading:
+    """A Markdown heading found in a style guide.
+
+    Attributes:
+        level: Heading depth, 1 for '#' through 6 for '######'.
+        text: The heading as written, including any number the guide prints.
+        index: Positional index derived from the heading tree ('2.2.1'), unique
+            within the guide. Empty for the document title.
+        number: The section number the document prints itself, or an empty
+            string for the eleven guides that number nothing.
+        title: The heading text without the number the document prints.
+        line: Zero-based index of the heading's line within the guide.
+    """
+
+    level: int
+    text: str
+    index: str
+    number: str
+    title: str
+    line: int
+
+
+def _iter_heading_lines(content: str) -> Iterator[tuple[int, int, str]]:
+    """Yield the headings of a Markdown document, skipping fenced code.
+
+    Args:
+        content: The full Markdown text of a style guide.
+
+    Yields:
+        Tuples of (line index, heading level, heading text).
+    """
+    in_fence = False
+    for line_number, line in enumerate(content.splitlines()):
+        # Fences toggle: a line inside one is sample code whatever it says
+        if FENCE_PATTERN.match(line):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+
+        match = HEADING_PATTERN.match(line)
+        if match:
+            yield line_number, len(match.group(1)), match.group(2).strip()
+
+
+def _next_index(open_headings: list[list[Any]], level: int) -> str:
+    """Advance the heading tree by one heading and render its index.
+
+    Numbering counts siblings under a shared parent rather than counting each
+    heading level independently. Guides skip levels (an h3 following an h4),
+    which a per-level counter would give the same index twice.
+
+    Args:
+        open_headings: Mutable stack of [level, index, child count] for the
+            headings still open above this one, updated in place. It starts
+            with a level 0 root so that the top level always has a parent.
+        level: The level of the heading being numbered.
+
+    Returns:
+        The dotted positional index for the heading, e.g. '2.2.1'.
+    """
+    # Close every heading this one is not nested inside of, leaving its parent
+    while open_headings[-1][0] >= level:
+        open_headings.pop()
+
+    parent = open_headings[-1]
+    parent[2] += 1
+    index = f"{parent[1]}.{parent[2]}" if parent[1] else str(parent[2])
+
+    open_headings.append([level, index, 0])
+    return index
+
+
+def _split_document_number(text: str, numbered: bool) -> tuple[str, str]:
+    """Separate the number a guide prints in a heading from its title.
+
+    Args:
+        text: The heading text as written.
+        numbered: Whether the document numbers its headings at all. Guides that
+            do not still have headings that open with a digit (C++'s '0 and
+            nullptr/NULL'), and those digits are part of the title.
+
+    Returns:
+        A tuple of (number, title); the number is empty when there is none.
+    """
+    match = DOCUMENT_NUMBER_PATTERN.match(text) if numbered else None
+    if not match:
+        return "", text
+    return match.group(1), match.group(2).strip()
+
+
+def parse_headings(content: str) -> list[Heading]:
+    """Parse the heading tree of a style guide.
+
+    Args:
+        content: The full Markdown text of a style guide.
+
+    Returns:
+        The guide's headings in document order.
+    """
+    raw = list(_iter_heading_lines(content))
+    if not raw:
+        return []
+
+    # Only three of the shipped guides number their headings. A dotted number
+    # ('2.2') is the reliable signal; a bare leading digit is not.
+    document_numbers = [
+        match.group(1)
+        for _, _, text in raw
+        if (match := DOCUMENT_NUMBER_PATTERN.match(text))
+    ]
+    numbered = any("." in number for number in document_numbers)
+
+    # A lone top-level heading is the document title: it roots the tree rather
+    # than being the first section, so numbering starts with its children.
+    top_level = min(level for _, level, _ in raw)
+    top_level_lines = [line for line, level, _ in raw if level == top_level]
+    title_line = top_level_lines[0] if len(top_level_lines) == 1 else None
+
+    headings = []
+    open_headings: list[list[Any]] = [[0, "", 0]]
+    for line, level, text in raw:
+        index = "" if line == title_line else _next_index(open_headings, level)
+        number, title = _split_document_number(text, numbered)
+        headings.append(
+            Heading(
+                level=level,
+                text=text,
+                index=index,
+                number=number,
+                title=title,
+                line=line,
+            )
+        )
+
+    return headings
+
+
+def _slugify(text: str) -> str:
+    """Reduce heading text to a form that survives punctuation and casing.
+
+    Args:
+        text: The text to normalize.
+
+    Returns:
+        A lowercase slug with runs of non-alphanumeric characters as dashes.
+    """
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+
+
+def format_outline(
+    headings: Sequence[Heading], depth: Optional[int] = None
+) -> str:
+    """Render a heading tree, one heading per line.
+
+    Args:
+        headings: The headings of a guide, in document order.
+        depth: Maximum number of heading levels to show, or None for all.
+
+    Returns:
+        The outline as text: indentation for depth, the positional index to
+        pass to --section, then the heading's own text verbatim so a rule can
+        be cited exactly as the guide writes it.
+    """
+    if not headings:
+        return ""
+
+    top_level = min(heading.level for heading in headings)
+    lines = []
+    for heading in headings:
+        if depth is not None and heading.level - top_level >= depth:
+            continue
+
+        # The document title roots the tree and has no index to print
+        indent = "  " * (heading.level - top_level)
+        prefix = f"{heading.index}  " if heading.index else ""
+        lines.append(f"{indent}{prefix}{heading.text}")
+
+    return "\n".join(lines)
+
+
+def _matches_component(heading: Heading, component: str, exact: bool) -> bool:
+    """Test one reference component against a heading.
+
+    Args:
+        heading: The heading to test.
+        component: One component of a section reference.
+        exact: Whether the text must match in full rather than as a substring.
+
+    Returns:
+        True if the component identifies the heading.
+    """
+    # Numbers are only ever compared in full; a substring of a number would
+    # match unrelated sections.
+    wanted = component.strip().rstrip(".")
+    if wanted and wanted in {heading.index, heading.number}:
+        return True
+
+    slug = _slugify(component)
+    if not slug:
+        return False
+    candidates = {_slugify(heading.title), _slugify(heading.text)}
+    if exact:
+        return slug in candidates
+    return any(slug in candidate for candidate in candidates)
+
+
+def _iter_ancestors(
+    headings: Sequence[Heading], position: int
+) -> Iterator[Heading]:
+    """Yield the headings that enclose a heading, innermost first.
+
+    Args:
+        headings: The headings of a guide, in document order.
+        position: Index into headings of the heading to walk out from.
+
+    Yields:
+        Each enclosing heading, skipping the sibling subtrees in between.
+    """
+    level = headings[position].level
+    for candidate in reversed(headings[:position]):
+        if candidate.level < level:
+            level = candidate.level
+            yield candidate
+
+
+def _matches_path(
+    headings: Sequence[Heading],
+    position: int,
+    components: Sequence[str],
+    exact: bool,
+) -> bool:
+    """Test whether a heading and its ancestors satisfy a reference path.
+
+    Args:
+        headings: The headings of a guide, in document order.
+        position: Index into headings of the candidate heading.
+        components: Reference components, outermost first.
+        exact: Whether text components must match in full.
+
+    Returns:
+        True if the last component matches the heading and the remaining ones
+        match its ancestors, in order. Intervening ancestors may be skipped, so
+        'Imports > Decision' works without naming every level in between.
+    """
+    if not _matches_component(headings[position], components[-1], exact):
+        return False
+
+    # Consume the outer components as the ancestors satisfying them are met
+    remaining = list(components[:-1])
+    for ancestor in _iter_ancestors(headings, position):
+        if not remaining:
+            break
+        if _matches_component(ancestor, remaining[-1], exact):
+            remaining.pop()
+
+    return not remaining
+
+
+def find_headings(headings: Sequence[Heading], reference: str) -> list[int]:
+    """Locate the headings a section reference names.
+
+    Args:
+        headings: The headings of a guide, in document order.
+        reference: A positional index ('2.2.1'), a section number the guide
+            prints, heading text, or a parent-scoped path
+            ('Imports > Decision').
+
+    Returns:
+        Positions of every matching heading, in document order. More than one
+        means the reference is ambiguous.
+    """
+    components = [
+        part.strip()
+        for part in PATH_SEPARATOR_PATTERN.split(reference)
+        if part.strip()
+    ]
+    if not components:
+        return []
+
+    # Prefer whole matches; fall back to substrings only when nothing matches
+    # in full, so 'Imports' does not also select 'Imports and Exports'.
+    for exact in (True, False):
+        matches = [
+            position
+            for position in range(len(headings))
+            if _matches_path(headings, position, components, exact)
+        ]
+        if matches:
+            return matches
+
+    return []
+
+
+def extract_section(
+    content: str, headings: Sequence[Heading], position: int
+) -> str:
+    """Extract one section of a guide.
+
+    Args:
+        content: The full Markdown text of the guide.
+        headings: The headings of the guide, in document order.
+        position: Index into headings of the section to extract.
+
+    Returns:
+        The heading and everything below it up to the next heading of the same
+        or a higher level, so nested subsections travel with their parent.
+    """
+    lines = content.splitlines()
+    heading = headings[position]
+
+    end = len(lines)
+    for following in headings[position + 1 :]:
+        if following.level <= heading.level:
+            end = following.line
+            break
+
+    # Shed the trailing anchors that belong to the following heading
+    section = lines[heading.line : end]
+    while section and (
+        not section[-1].strip() or ANCHOR_PATTERN.match(section[-1].strip())
+    ):
+        section.pop()
+
+    return "\n".join(section)
+
+
+def _describe_heading(headings: Sequence[Heading], position: int) -> str:
+    """Describe a heading by its path, for disambiguation messages.
+
+    Args:
+        headings: The headings of a guide, in document order.
+        position: Index into headings of the heading to describe.
+
+    Returns:
+        The heading's title preceded by those of its ancestors, e.g.
+        'Language Rules > Imports > Decision'. The document title is left out,
+        since it roots every path and so tells the caller nothing.
+    """
+    path = [headings[position].title]
+    path.extend(
+        ancestor.title
+        for ancestor in _iter_ancestors(headings, position)
+        if ancestor.index
+    )
+
+    return " > ".join(reversed(path))
+
+
+def _unique_reference(headings: Sequence[Heading], position: int) -> str:
+    """Build a reference that selects one heading and no other.
+
+    Args:
+        headings: The headings of a guide, in document order.
+        position: Index into headings of the heading to refer to.
+
+    Returns:
+        The heading's outline index when that is unambiguous, and its path
+        otherwise. An index can collide with a number the guide prints when
+        the two drift apart, and suggesting it would send the caller back to
+        the same complaint.
+    """
+    index = headings[position].index
+    if index and find_headings(headings, index) == [position]:
+        return index
+
+    path = _describe_heading(headings, position)
+    return f'"{path}"'
+
+
+# Beyond this many candidates a disambiguation list stops being readable
+MAX_REPORTED_MATCHES = 15
+
+
+def _select_section(content: str, reference: str, language: str) -> str:
+    """Resolve a section reference against a guide and extract that section.
+
+    Args:
+        content: The full Markdown text of the guide.
+        reference: The section reference given on the command line.
+        language: The language whose guide is being read, for error messages.
+
+    Returns:
+        The Markdown of the requested section.
+
+    Raises:
+        SystemExit: If the reference matches no heading, or more than one.
+    """
+    headings = parse_headings(content)
+    matches = find_headings(headings, reference)
+
+    if not matches:
+        click.echo(
+            f"Error: Found no heading matching '{reference}' in the "
+            f"'{language}' guide. Run 'readability guide {language} "
+            "--outline' to list its sections.",
+            err=True,
+        )
+        sys.exit(1)
+
+    # Reporting every candidate beats returning the first one silently, since
+    # guides repeat headings ('Decision' appears under every Python rule).
+    if len(matches) > 1:
+        click.echo(
+            f"Error: '{reference}' matches {len(matches)} headings in the "
+            f"'{language}' guide. Repeat with one of:",
+            err=True,
+        )
+        for position in matches[:MAX_REPORTED_MATCHES]:
+            suggestion = _unique_reference(headings, position)
+            description = _describe_heading(headings, position)
+            # A path suggestion already reads as its own description
+            if suggestion.strip('"') != description:
+                suggestion = f"{suggestion} ({description})"
+            click.echo(f"  --section {suggestion}", err=True)
+        if len(matches) > MAX_REPORTED_MATCHES:
+            click.echo(
+                f"  ... and {len(matches) - MAX_REPORTED_MATCHES} more",
+                err=True,
+            )
+        sys.exit(1)
+
+    return extract_section(content, headings, matches[0])
+
+
 @click.group(invoke_without_command=True)
 @click.pass_context
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging.")
@@ -303,15 +752,41 @@ def _echo_guide_path(language: str) -> None:
     is_flag=True,
     help="Print where the guide is stored instead of its contents.",
 )
+@click.option(
+    "--outline",
+    is_flag=True,
+    help="Print the guide's heading tree instead of its contents.",
+)
+@click.option(
+    "--section",
+    "section",
+    metavar="REF",
+    help=(
+        "Print one section, named by heading text, a parent-scoped path "
+        "('Imports > Decision'), or an outline index ('2.2.1')."
+    ),
+)
+@click.option(
+    "--depth",
+    type=click.IntRange(min=1),
+    help="Limit --outline to this many heading levels.",
+)
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging.")
 def guide(
     language: str,
     output: Optional[str],
     remote: bool,
     show_path: bool,
+    outline: bool,
+    section: Optional[str],
+    depth: Optional[int],
     verbose: bool,
 ) -> None:
-    """Fetch the style guide for a specific LANGUAGE."""
+    """Fetch the style guide for a specific LANGUAGE.
+
+    With no other option the whole guide is printed. --path, --outline and
+    --section each narrow that down, and take precedence in that order.
+    """
     if verbose:
         logger.setLevel(logging.DEBUG)
 
@@ -327,6 +802,17 @@ def guide(
     try:
         # Fetch and process the style guide
         markdown_content = get_guide(language, remote=remote)
+
+        # Navigation replaces the contents with the part that was asked for,
+        # so --output and stdout keep working the same way for both
+        if outline:
+            markdown_content = format_outline(
+                parse_headings(markdown_content), depth=depth
+            )
+        elif section:
+            markdown_content = _select_section(
+                markdown_content, section, language
+            )
 
         # Handle output: either save to file or print to stdout
         if output:
