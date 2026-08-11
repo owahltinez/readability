@@ -114,9 +114,18 @@ readability guide python --remote
 # Save a style guide to a file
 readability guide cpp --output cpp-style.md
 
+# Print where the guide already lives, to search it without copying it
+readability guide python --path
+grep -n "Naming" "$(readability guide python --path)"
+
 # Synchronize all supported style guides to the local cache
 readability sync
 ```
+
+A guide can exceed 100 KB, so `--path` is the cheap way to consult one: the
+file is already on disk, and searching it beats reading it whole or writing
+out a second copy. It is also what a coding agent should use, rather than
+redirecting the guide into a repository.
 
 ### Supported Languages
 

@@ -151,6 +151,52 @@ def test_cli_output_file(mock_guide: MagicMock, tmp_path: Path) -> None:
     assert output_file.read_text() == "# Style Guide"
 
 
+def test_cli_path_prints_the_location(tmp_path: Path, monkeypatch) -> None:
+    """Tests that --path reports where the guide already lives on disk.
+
+    Guides ship with the package, so a caller wanting to search one needs
+    its location, not another copy of its contents.
+    """
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    (tmp_path / "pyguide.md").write_text("# Style Guide")
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["guide", "python", "--path"])
+
+    assert result.exit_code == 0
+    assert result.output.strip() == str(tmp_path / "pyguide.md")
+    assert "# Style Guide" not in result.output
+
+
+def test_cli_path_reports_a_guide_not_yet_fetched(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Tests that a missing local guide fails instead of naming a phantom.
+
+    Printing a path to a file that is not there would send the caller to
+    read nothing at all.
+    """
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["guide", "python", "--path"])
+
+    assert result.exit_code == 1
+    assert "sync" in result.output
+
+
+def test_cli_path_rejects_an_unsupported_language(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Tests that --path validates the language like the default path does."""
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["guide", "nonexistent", "--path"])
+
+    assert result.exit_code == 1
+
+
 @patch("readability.get_guide")
 def test_cli_verbose(mock_guide: MagicMock) -> None:
     """Tests CLI with verbose flag.

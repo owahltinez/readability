@@ -253,6 +253,38 @@ def cli(ctx: click.Context, verbose: bool) -> None:
         logger.setLevel(logging.DEBUG)
 
 
+def _echo_guide_path(language: str) -> None:
+    """Print the local path of a language's style guide.
+
+    Args:
+        language: The language whose guide is being located.
+
+    Raises:
+        SystemExit: If the language is unsupported or its guide is absent.
+    """
+    filename = LANGUAGE_MAP.get(language.lower())
+    if not filename:
+        click.echo(
+            f"Error: Language '{language}' is not supported. Supported "
+            f"languages: {', '.join(sorted(LANGUAGE_MAP.keys()))}",
+            err=True,
+        )
+        sys.exit(1)
+
+    local_path = get_local_path(filename)
+    if not os.path.exists(local_path):
+        # Naming a file that is not there would send the caller to read
+        # nothing; fetching it is what `sync` is for.
+        click.echo(
+            f"Error: No local guide for '{language}' at {local_path}. "
+            "Run 'readability sync' to fetch it.",
+            err=True,
+        )
+        sys.exit(1)
+
+    click.echo(local_path)
+
+
 @cli.command()
 @click.argument("language")
 @click.option(
@@ -264,15 +296,33 @@ def cli(ctx: click.Context, verbose: bool) -> None:
 @click.option(
     "--remote", "-r", is_flag=True, help="Force fetching from the web."
 )
+@click.option(
+    "--path",
+    "-p",
+    "show_path",
+    is_flag=True,
+    help="Print where the guide is stored instead of its contents.",
+)
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging.")
 def guide(
-    language: str, output: Optional[str], remote: bool, verbose: bool
+    language: str,
+    output: Optional[str],
+    remote: bool,
+    show_path: bool,
+    verbose: bool,
 ) -> None:
     """Fetch the style guide for a specific LANGUAGE."""
     if verbose:
         logger.setLevel(logging.DEBUG)
 
     logger.info("Processing style guide for: %s", language)
+
+    # A guide runs to hundreds of kilobytes, so a caller that wants a few
+    # rules is better served searching the copy already on disk than
+    # reading the whole thing or writing out a second one.
+    if show_path:
+        _echo_guide_path(language)
+        return
 
     try:
         # Fetch and process the style guide
