@@ -822,8 +822,13 @@ def test_parse_headings_splits_section_numbers() -> None:
     assert unnumbered["Which Shell to Use"].text == "Which Shell to Use"
 
 
-def test_parse_headings_assigns_positional_indices() -> None:
-    """Tests that every heading gets a unique index from its tree position."""
+def test_parse_headings_uses_the_guides_own_numbers() -> None:
+    """Tests that a guide which numbers its sections addresses them that way.
+
+    Its numbers are what the published guide calls its rules, so a citation
+    taken from here has to match. A positional index would drift wherever
+    the guide skips a number.
+    """
     headings = parse_headings(NUMBERED_GUIDE)
 
     # The document title is the tree root, so it carries no index
@@ -833,14 +838,28 @@ def test_parse_headings_assigns_positional_indices() -> None:
     assert indices["1 Background"] == "1"
     assert indices["2.2 Imports"] == "2.2"
 
-    # Repeated headings are distinguished by position, not text
-    assert indices["2.1.4 Decision"] == "2.1.1"
-    assert indices["2.2.4 Decision"] == "2.2.1"
-    assert indices["2.2.4.1 Exemptions"] == "2.2.1.1"
+    # Repeated headings keep the numbers the guide gives them
+    assert indices["2.1.4 Decision"] == "2.1.4"
+    assert indices["2.2.4 Decision"] == "2.2.4"
+    assert indices["2.2.4.1 Exemptions"] == "2.2.4.1"
 
-    # Indices are unique by construction, even where the guide numbers nothing
+
+def test_parse_headings_numbers_a_guide_that_does_not() -> None:
+    """Tests that positional indices cover the eleven unnumbered guides."""
     unnumbered = [h.index for h in parse_headings(UNNUMBERED_GUIDE)]
+
     assert unnumbered == ["", "1", "1.1", "2", "2.1", "2.2"]
+
+
+def test_parse_headings_index_follows_a_skipped_number() -> None:
+    """Tests that a gap in the guide's numbering is preserved, not closed.
+
+    pyguide has no 2.15 at all: calling its 2.16 by that name would cite a
+    section the published guide does not have.
+    """
+    headings = parse_headings("# Guide\n\n## 2.14 A\n\n## 2.16 B\n")
+
+    assert [h.index for h in headings] == ["", "2.14", "2.16"]
 
 
 def test_parse_headings_indices_survive_skipped_levels() -> None:
@@ -876,10 +895,11 @@ def test_cli_outline_prints_the_heading_tree(
     # The document title heads the tree and carries no index of its own
     assert lines[0].strip() == "Sample Style Guide"
 
-    # Every other heading gets a positional index, and keeps its own text
-    assert _outline_entry(lines, "1 Background").startswith("1 ")
-    assert _outline_entry(lines, "2.2 Imports").startswith("2.2 ")
-    assert _outline_entry(lines, "2.2.4 Decision").startswith("2.2.1 ")
+    # The index is the guide's own number, so it appears once per line
+    assert "1  Background" in lines[1]
+    assert any(line.strip() == "2.2  Imports" for line in lines)
+    assert any(line.strip() == "2.2.4  Decision" for line in lines)
+    assert "2.2 2.2 Imports" not in result.stdout
 
     # Bodies stay out of the outline
     assert "Imports body." not in result.stdout
@@ -911,8 +931,8 @@ def test_cli_outline_depth_limits_the_tree(tmp_path: Path, monkeypatch) -> None:
     )
 
     assert result.exit_code == 0
-    assert "2 Language Rules" in result.stdout
-    assert "2.1 Lint" in result.stdout
+    assert "2  Language Rules" in result.stdout
+    assert "2.1  Lint" in result.stdout
     assert "Decision" not in result.stdout
 
 
@@ -1108,14 +1128,14 @@ def test_cli_section_writes_to_an_output_file(
     assert "Background body." not in saved
 
 
-def test_cli_section_suggestions_always_resolve(
+def test_cli_section_number_never_collides_with_an_index(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """Tests that every reference offered for an ambiguous one is usable.
+    """Tests that a guide's own number addresses exactly its own section.
 
-    A guide's own numbering can drift from its structure (pyguide's '2.16' is
-    the 15th section), so an index can collide with a printed number. The
-    disambiguation must then offer something other than that same index.
+    While indices were positional this fixture was ambiguous: '3' named both
+    the third section and the one the guide prints as 3. Taking the index
+    from the guide's numbering removes that class of collision entirely.
     """
     monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
     _write_guide(
@@ -1126,6 +1146,24 @@ def test_cli_section_suggestions_always_resolve(
 
     runner = CliRunner()
     result = runner.invoke(cli, ["guide", "python", "--section", "3"])
+
+    assert result.exit_code == 0
+    assert result.stdout.startswith("## 3 Beta")
+
+
+def test_cli_section_suggestions_always_resolve(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Tests that every reference offered for an ambiguous one is usable.
+
+    Repeated titles stay ambiguous whatever the numbering: pyguide has 19
+    headings called 'Decision'. Each suggestion must select one on its own.
+    """
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    _write_guide(tmp_path, NUMBERED_GUIDE)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["guide", "python", "--section", "Decision"])
 
     assert result.exit_code == 1
     assert "matches 2 headings" in result.stderr

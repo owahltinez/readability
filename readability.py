@@ -406,6 +406,15 @@ def parse_headings(content: str) -> list[Heading]:
     for line, level, text in raw:
         index = "" if line == title_line else _next_index(open_headings, level)
         number, title = _split_document_number(text, numbered)
+
+        # A guide that numbers its own sections is the authority on what they
+        # are called, so its numbers address them. A positional index would
+        # drift wherever the guide skips one — pyguide has no 2.15 at all,
+        # and calling its 2.16 by that name would cite a section that does
+        # not exist. The tree still advances above, so headings the guide
+        # leaves unnumbered keep a positional index to be reachable by.
+        if number:
+            index = number
         headings.append(
             Heading(
                 level=level,
@@ -458,7 +467,9 @@ def format_outline(
         # The document title roots the tree and has no index to print
         indent = "  " * (heading.level - top_level)
         prefix = f"{heading.index}  " if heading.index else ""
-        lines.append(f"{indent}{prefix}{heading.text}")
+        # The index already carries the guide's own number where it has one,
+        # so printing the heading verbatim would show it twice.
+        lines.append(f"{indent}{prefix}{heading.title}")
 
     return "\n".join(lines)
 

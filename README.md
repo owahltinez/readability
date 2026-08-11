@@ -152,21 +152,25 @@ A section reference can be any of the following:
 
 | Reference | Example |
 |-----------|---------|
-| Outline index | `--section 2.2.1` |
-| A section number the guide prints itself | `--section 2.2.4` |
+| Section index, as shown by `--outline` | `--section 2.2.4` |
 | Heading text, case-insensitive, or its slug | `--section "function comments"` |
 | A parent-scoped path, spaces around the `>` | `--section "Imports > Decision"` |
 
 Whole matches are preferred; a reference that matches nothing in full is
 retried as a substring of the heading text.
 
-Only three of the shipped guides (Python, JavaScript, Java) number their own
-headings, so heading text is the reference that works everywhere. The outline
-index is assigned from each heading's position in the tree, which makes it
-unique even where a guide repeats a heading — `Definition`, `Pros`, `Cons`,
-and `Decision` appear under every rule in the Python guide. Prefer heading
-text when saving a reference for later: indices shift when a guide is
-re-synced, while headings are stable.
+Three of the shipped guides — Python, JavaScript, and Java — number their own
+sections, and those numbers are the index. A rule cited from the outline then
+matches the published guide exactly, including where the guide skips a
+number: the Python guide has no 2.15 at all, so its 2.16 is listed as 2.16
+rather than renumbered. The other eleven guides number nothing, so their
+index comes from each heading's position in the tree.
+
+Either way the index is unique, which is what makes a repeated heading
+addressable — `Definition`, `Pros`, `Cons`, and `Decision` appear under every
+rule in the Python guide. For a reference stored and used later, prefer a
+printed section number or the heading text over a positional index, since
+positional indices shift when an unnumbered guide is re-synced.
 
 A reference that matches several headings is reported rather than guessed at,
 listing the index and path of every candidate on stderr:
