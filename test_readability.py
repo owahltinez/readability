@@ -23,6 +23,7 @@ from readability import (
     get_guide_content,
     get_guides_dir,
     get_local_path,
+    main,
     parse_headings,
 )
 
@@ -186,13 +187,15 @@ def test_sync_command(
     mock_get_content.return_value = "content"
 
     with patch("readability.get_guides_dir", return_value=str(tmp_path)):
-        with caplog.at_level(logging.INFO):
-            runner = CliRunner()
-            result = runner.invoke(cli, ["sync"])
-            assert result.exit_code == 0
-            assert "Sync complete" in caplog.text
-            # Check if at least one guide was "synced" (written to tmp_path)
-            assert len(os.listdir(tmp_path)) > 0
+        runner = CliRunner()
+        result = runner.invoke(cli, ["sync"])
+
+        assert result.exit_code == 0
+        # Progress is an outcome the caller asked for, so it is reported
+        # regardless of log level rather than logged as narration.
+        assert "Sync complete" in result.stderr
+        # Check if at least one guide was "synced" (written to tmp_path)
+        assert len(os.listdir(tmp_path)) > 0
 
 
 def test_languages_command() -> None:
@@ -1289,3 +1292,50 @@ def test_every_shipped_guide_heading_is_addressable() -> None:
                 f"{language}: {reference!r} for {heading.title!r} "
                 f"resolved to {matches}, expected [{position}]"
             )
+
+
+@patch("readability.cli")
+@patch("logging.basicConfig")
+def test_logging_is_quiet_by_default(
+    mock_config: MagicMock, mock_cli: MagicMock
+) -> None:
+    """Narration belongs behind --verbose, not on every invocation.
+
+    CliRunner never reaches main(), so the level it installs can only be
+    checked here — which is also where the defect lived: INFO by default
+    left --verbose with nothing to enable but DEBUG.
+    """
+    main()
+
+    assert mock_config.call_args.kwargs["level"] == logging.WARNING
+
+
+def test_saving_a_guide_confirms_where_it_went(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A write is an outcome the caller asked for, so it is reported."""
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    _write_guide(tmp_path, NUMBERED_GUIDE)
+    destination = tmp_path / "saved.md"
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["guide", "python", "--output", str(destination)]
+    )
+
+    assert result.exit_code == 0
+    assert str(destination) in result.stderr
+    # The confirmation must not contaminate the guide on stdout
+    assert result.stdout == ""
+
+
+def test_check_reports_that_it_found_nothing(tmp_path: Path) -> None:
+    """Silence cannot be the only signal that a check ran and passed."""
+    clean = tmp_path / "clean.py"
+    clean.write_text('"""Docstring."""\n')
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["check", str(clean)])
+
+    assert result.exit_code == 0
+    assert "no findings" in (result.stdout + result.stderr).lower()

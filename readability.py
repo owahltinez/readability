@@ -797,7 +797,9 @@ def guide(
         if output:
             with open(output, "w", encoding="utf-8") as f:
                 f.write(markdown_content)
-            logger.info("Style guide saved to %s", output)
+            # A write the caller asked for is an outcome, not narration, and
+            # goes to stderr so it never contaminates piped guide content.
+            click.echo(f"Saved to {output}", err=True)
         else:
             click.echo(markdown_content)
 
@@ -814,7 +816,7 @@ def sync(verbose: bool) -> None:
     if verbose:
         logger.setLevel(logging.DEBUG)
 
-    logger.info("Synchronizing all style guides...")
+    click.echo("Synchronizing all style guides...", err=True)
 
     if not os.path.exists(get_guides_dir()):
         os.makedirs(get_guides_dir(), exist_ok=True)
@@ -826,7 +828,7 @@ def sync(verbose: bool) -> None:
     failure_count = 0
 
     for filename in sorted(filenames):
-        logger.info("Syncing %s...", filename)
+        click.echo(f"Syncing {filename}...", err=True)
         try:
             url = f"{BASE_URL}{filename}"
             content = get_guide_content(url)
@@ -836,16 +838,15 @@ def sync(verbose: bool) -> None:
             with open(local_path, "w", encoding="utf-8") as f:
                 f.write(markdown_content)
 
-            logger.info("Successfully synced %s to %s", filename, local_path)
+            click.echo(f"  synced to {local_path}", err=True)
             success_count += 1
         except Exception as e:
             logger.error("Failed to sync %s: %s", filename, e)
             failure_count += 1
 
-    logger.info(
-        "Sync complete. Successes: %d, Failures: %d",
-        success_count,
-        failure_count,
+    click.echo(
+        f"Sync complete. Successes: {success_count}, Failures: {failure_count}",
+        err=True,
     )
 
 
@@ -896,6 +897,10 @@ def check(paths: Sequence[str], fix: bool, verbose: bool) -> None:
 
     if found_issues:
         sys.exit(1)
+
+    # Findings are the only thing this command printed, so a clean run said
+    # nothing at all and left the caller unable to tell it from a no-op.
+    click.echo(f"No findings in {len(paths)} path(s).", err=True)
 
 
 def _check_path(path: Path, project_root: Path, fix: bool = False) -> bool:
@@ -1281,8 +1286,11 @@ def main() -> None:
     """Main entry point for the CLI."""
     # Configure logging here rather than at import time so that importing this
     # module as a library (e.g. from lemming) has no side effects
+    # WARNING, not INFO: everything logged below it narrates progress, which
+    # is what --verbose is for. Leaving it on meant there was no quiet mode
+    # and the flag could only add DEBUG on top.
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.WARNING,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         handlers=[logging.StreamHandler(sys.stderr)],
     )
