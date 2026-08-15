@@ -133,6 +133,25 @@ the state a container image is usually in.
 `check` exits non-zero on findings and on having verified nothing, so it can
 gate CI without a clean exit ever meaning "the tools were absent".
 
+### Python API
+
+Use `check_paths` to run the same checks without the command's status messages
+or exit-code decisions:
+
+```python
+from pathlib import Path
+
+from readability import check_paths
+
+report = check_paths(["src", Path("tests")], project_root=Path.cwd())
+if report.findings or report.failed or not report.ran:
+    handle_failed_check(report)
+```
+
+The returned `CheckReport` records only whether findings occurred and which
+tools ran, were skipped, or failed. Detailed tool findings are still written
+as each tool runs.
+
 ### Default Configurations
 
 For Ruff and Pyrefly, bundled defaults based on the
