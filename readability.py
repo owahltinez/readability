@@ -1063,19 +1063,81 @@ def check(paths: Sequence[str], fix: bool, verbose: bool) -> None:
 
     # Process each provided path independently, tracking findings across
     # all of them so the exit code reflects the overall result
-    found_issues = False
+    report = CheckReport()
     for path_str in paths:
-        found_issues |= _check_path(Path(path_str), project_root, fix=fix)
+        report.absorb(_check_path(Path(path_str), project_root, fix=fix))
 
-    if found_issues:
+    # Coverage the caller does not know is missing reads as coverage
+    if report.skipped:
+        click.echo(
+            f"Warning: not installed, so not run: "
+            f"{', '.join(sorted(report.skipped))}.",
+            err=True,
+        )
+
+    # Having run nothing is not a pass. Reporting it as one is how this
+    # command became a silent no-op wherever its tools were absent, gating
+    # nothing while every caller read the exit code as approval.
+    if not report.ran and report.skipped:
+        click.echo(
+            f"Error: Every tool for {len(paths)} path(s) is missing, so "
+            "nothing was verified. Install them, or pass paths they cover.",
+            err=True,
+        )
+        sys.exit(1)
+
+    # No tool applying is a fact about the project rather than a fault: there
+    # is nothing to install and nothing to fix. It still cannot be reported
+    # as a clean result, because nothing was inspected.
+    if not report.ran:
+        click.echo(
+            f"No tool applies to {len(paths)} path(s); nothing was checked.",
+            err=True,
+        )
+        return
+
+    if report.findings:
         sys.exit(1)
 
     # Findings are the only thing this command printed, so a clean run said
     # nothing at all and left the caller unable to tell it from a no-op.
-    click.echo(f"No findings in {len(paths)} path(s).", err=True)
+    click.echo(
+        f"No findings in {len(paths)} path(s) "
+        f"({', '.join(sorted(report.ran))}).",
+        err=True,
+    )
 
 
-def _check_path(path: Path, project_root: Path, fix: bool = False) -> bool:
+@dataclasses.dataclass
+class CheckReport:
+    """What a check actually did, as opposed to what it was asked to do.
+
+    Attributes:
+        findings: Whether any tool that ran reported something.
+        ran: Names of the tools that were applicable and present.
+        skipped: Names of the tools that were applicable but not installed.
+            Tools with no trigger file are in neither set: they were never
+            wanted, so passing without them is not a gap in coverage.
+    """
+
+    findings: bool = False
+    ran: set[str] = dataclasses.field(default_factory=set)
+    skipped: set[str] = dataclasses.field(default_factory=set)
+
+    def absorb(self, other: "CheckReport") -> None:
+        """Fold another report into this one.
+
+        Args:
+            other: The report to merge, typically for one more path.
+        """
+        self.findings |= other.findings
+        self.ran |= other.ran
+        self.skipped |= other.skipped
+
+
+def _check_path(
+    path: Path, project_root: Path, fix: bool = False
+) -> CheckReport:
     """Apply relevant tools to a single path.
 
     Args:
@@ -1084,17 +1146,27 @@ def _check_path(path: Path, project_root: Path, fix: bool = False) -> bool:
         fix: Whether to apply automatic fixes.
 
     Returns:
-        True if any tool reported findings, False otherwise.
+        What the tools applicable to this path did.
     """
     logger.info("Checking path: %s", path)
 
     # Iterate through all supported tool definitions
-    found_issues = False
+    report = CheckReport()
     for tool in _get_tool_definitions(path, project_root):
-        if _should_run_tool(tool, path, project_root):
-            found_issues |= _run_tool(tool["name"], tool, fix=fix)
+        if not _should_run_tool(tool, path, project_root):
+            continue
 
-    return found_issues
+        # A tool that is wanted but absent leaves a hole in the coverage,
+        # which is not the same as a clean result
+        name = tool["name"]
+        if not _tool_is_installed(name, tool):
+            report.skipped.add(name)
+            continue
+
+        report.ran.add(name)
+        report.findings |= _run_tool(name, tool, fix=fix)
+
+    return report
 
 
 def _should_run_tool(
@@ -1119,6 +1191,35 @@ def _should_run_tool(
 
     # For directories, the existence of a trigger file is sufficient
     return has_trigger
+
+
+def _tool_is_installed(tool_name: str, tool_config: dict[str, Any]) -> bool:
+    """Report whether a tool's executable is on PATH.
+
+    Args:
+        tool_name: The name of the tool, for logging.
+        tool_config: The tool configuration dictionary.
+
+    Returns:
+        True if the tool can be run.
+    """
+    # Every command for a tool starts with the same executable, so any of
+    # them answers the question
+    cmd = (
+        tool_config.get("format")
+        or tool_config.get("check")
+        or tool_config.get("fix")
+        or tool_config.get("check_format")
+    )
+    if not cmd:
+        return False
+
+    executable = str(cmd[0])
+    if not shutil.which(executable):
+        logger.debug("Tool %s (%s) not found in PATH.", tool_name, executable)
+        return False
+
+    return True
 
 
 def _bundled_config(tool_name: str) -> Path:
@@ -1360,23 +1461,6 @@ def _run_tool(
     Returns:
         True if the tool reported findings, False otherwise.
     """
-    # Identify the primary command to check for executable availability
-    cmd = (
-        tool_config.get("format")
-        or tool_config.get("check")
-        or tool_config.get("fix")
-        or tool_config.get("check_format")
-    )
-    if not cmd:
-        return False
-
-    executable = str(cmd[0])
-    if not shutil.which(executable):
-        logger.debug(
-            "Tool %s (%s) not found in PATH, skipping.", tool_name, executable
-        )
-        return False
-
     logger.info("Running %s...", tool_name)
     found_issues = False
     try:

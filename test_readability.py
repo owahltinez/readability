@@ -409,6 +409,10 @@ def test_check_command_no_trigger(
     assert result.exit_code == 0
     # Ruff should NOT be called because trigger is missing
     assert mock_run.call_count == 0
+    # Nothing ran, so this cannot be reported as a clean result
+    output = (result.stdout + result.stderr).lower()
+    assert "no findings" not in output
+    assert "nothing was checked" in output
 
 
 @patch("shutil.which")
@@ -1475,3 +1479,76 @@ def test_grep_flag_is_gone(tmp_path: Path, monkeypatch) -> None:
 
     assert result.exit_code != 0
     assert "no such option" in result.output.lower()
+
+
+@patch("shutil.which")
+def test_check_fails_when_no_tool_could_run(
+    mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """A check that ran nothing must not report a clean bill of health.
+
+    This is how the command became a no-op in a container image: the tools
+    it shells out to were absent, every one was skipped, and it exited 0
+    saying it found nothing, so the gate went green having checked nothing.
+    """
+    mock_which.return_value = None
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("pyproject.toml").touch()
+        Path("script.py").touch()
+
+        result = runner.invoke(cli, ["check", "script.py"])
+
+    assert result.exit_code != 0
+    output = (result.stdout + result.stderr).lower()
+    assert "no findings" not in output
+    # The caller has to be told which tools were missing to fix it
+    assert "ruff" in output
+    assert "pyrefly" in output
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_check_reports_partially_skipped_tools(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """Passing on half the tools is not the same as passing."""
+    mock_which.side_effect = lambda x: x if x == "ruff" else None
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("pyproject.toml").touch()
+        Path("script.py").touch()
+
+        result = runner.invoke(cli, ["check", "script.py"])
+
+    # Something ran and found nothing, so this is a pass, but a partial one
+    assert result.exit_code == 0
+    output = result.stdout + result.stderr
+    assert "no findings" in output.lower()
+    assert "pyrefly" in output
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_check_does_not_report_inapplicable_tools(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """A tool with no trigger file was never wanted, so it was not skipped."""
+    mock_which.side_effect = lambda x: x if x in ("ruff", "pyrefly") else None
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("pyproject.toml").touch()
+        Path("script.py").touch()
+
+        result = runner.invoke(cli, ["check", "script.py"])
+
+    assert result.exit_code == 0
+    output = result.stdout + result.stderr
+    # No biome.json or .prettierrc here, so neither is a skipped tool
+    assert "biome" not in output
+    assert "prettier" not in output
