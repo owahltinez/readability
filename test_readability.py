@@ -410,7 +410,7 @@ def test_check_command_biome(
     assert [
         "npx",
         "-y",
-        "biome",
+        "@biomejs/biome",
         "lint",
         "--no-errors-on-unmatched",
         "script.js",
@@ -418,7 +418,7 @@ def test_check_command_biome(
     assert [
         "npx",
         "-y",
-        "biome",
+        "@biomejs/biome",
         "format",
         "--no-errors-on-unmatched",
         "script.js",
@@ -1692,5 +1692,54 @@ def test_check_without_defaults_respects_its_trigger(
         result = runner.invoke(cli, ["check", "script.ts"])
 
     assert result.exit_code == 0
+    # Reached directly because `which` finds it; npx is only the fallback
     called = [call.args[0][0] for call in mock_run.call_args_list]
-    assert "npx" in called
+    assert "biome" in called
+
+
+def test_biome_is_invoked_by_its_real_package_name(tmp_path: Path) -> None:
+    """'biome' on npm is an unrelated package, not the linter.
+
+    `npx -y biome` fetched and ran biome@0.3.3, "a simple way to manage
+    environment variables on a per-project basis", which exits 0 whatever
+    it is handed. Biome linting therefore never ran at all.
+    """
+    tools = {
+        t["name"]: t for t in _get_tool_definitions(Path("f.ts"), tmp_path)
+    }
+    biome = tools["biome"]
+
+    for key in ("check", "check_format", "fix", "format"):
+        assert "biome" not in biome[key], (
+            f"{key} names the wrong npm package: {biome[key]}"
+        )
+        assert "@biomejs/biome" in biome[key]
+
+
+def test_node_tools_prefer_a_project_local_install(tmp_path: Path) -> None:
+    """A project's own version beats whatever npx would fetch."""
+    local = tmp_path / "node_modules" / ".bin"
+    local.mkdir(parents=True)
+    for name in ("biome", "prettier"):
+        binary = local / name
+        binary.write_text("#!/bin/sh\n")
+        binary.chmod(0o755)
+
+    tools = {
+        t["name"]: t for t in _get_tool_definitions(Path("f.ts"), tmp_path)
+    }
+
+    for name in ("biome", "prettier"):
+        cmd = tools[name].get("check") or tools[name]["check_format"]
+        assert cmd[0] == str(local / name)
+        assert "npx" not in cmd
+
+
+def test_node_tools_fall_back_to_npx(tmp_path: Path) -> None:
+    """With nothing installed, npx stays the way to reach them."""
+    tools = {
+        t["name"]: t for t in _get_tool_definitions(Path("f.ts"), tmp_path)
+    }
+
+    cmd = tools["prettier"]["check_format"]
+    assert cmd[:3] == ["npx", "-y", "prettier"]

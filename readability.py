@@ -1326,6 +1326,39 @@ def _default_config_args(
     return ["--config", str(_bundled_config(tool_name))]
 
 
+def _node_tool_command(
+    binary: str, package: str, project_root: Path
+) -> list[str]:
+    """Build the argv prefix that reaches a Node-based tool.
+
+    A project that installed the tool has pinned a version, and running a
+    different one through npx would lint against rules the project did not
+    choose. npx remains the fallback, since it is the only way to reach a
+    tool that is not installed at all.
+
+    Args:
+        binary: The executable's name, as npm installs it.
+        package: The npm package providing it, which is not always the same:
+            'biome' on npm is an unrelated environment-variable helper, and
+            fetching it ran something that exits 0 whatever it is given.
+        project_root: The project root, searched for node_modules.
+
+    Returns:
+        The command prefix to put the tool's own arguments after.
+    """
+    # A project-local install is the version the project chose
+    local = project_root / "node_modules" / ".bin" / binary
+    if local.exists():
+        return [str(local)]
+
+    # Then one the user installed themselves, which needs no download
+    found = shutil.which(binary)
+    if found:
+        return [found]
+
+    return ["npx", "-y", package]
+
+
 def _get_tool_definitions(
     path: Path, project_root: Path
 ) -> list[dict[str, Any]]:
@@ -1347,6 +1380,10 @@ def _get_tool_definitions(
     pyrefly_config = _default_config_args(
         project_root, ["pyrefly.toml"], "pyrefly"
     )
+
+    # Resolved once so every command for a tool reaches the same executable
+    biome = _node_tool_command("biome", "@biomejs/biome", project_root)
+    prettier = _node_tool_command("prettier", "prettier", project_root)
 
     return [
         {
@@ -1394,34 +1431,26 @@ def _get_tool_definitions(
         {
             "name": "biome",
             "check": [
-                "npx",
-                "-y",
-                "biome",
+                *biome,
                 "lint",
                 "--no-errors-on-unmatched",
                 path_str,
             ],
             "check_format": [
-                "npx",
-                "-y",
-                "biome",
+                *biome,
                 "format",
                 "--no-errors-on-unmatched",
                 path_str,
             ],
             "fix": [
-                "npx",
-                "-y",
-                "biome",
+                *biome,
                 "lint",
                 "--write",
                 "--no-errors-on-unmatched",
                 path_str,
             ],
             "format": [
-                "npx",
-                "-y",
-                "biome",
+                *biome,
                 "format",
                 "--write",
                 "--no-errors-on-unmatched",
@@ -1442,17 +1471,13 @@ def _get_tool_definitions(
         {
             "name": "prettier",
             "check_format": [
-                "npx",
-                "-y",
-                "prettier",
+                *prettier,
                 "--check",
                 "--no-error-on-unmatched-pattern",
                 path_str,
             ],
             "format": [
-                "npx",
-                "-y",
-                "prettier",
+                *prettier,
                 "--write",
                 "--no-error-on-unmatched-pattern",
                 path_str,
