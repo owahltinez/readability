@@ -14,7 +14,8 @@ and quick access to style conventions without browsing HTML pages.
   Pyrefly are used automatically when a project does not define its own.
 - **Style Guides**: A `guide` command that fetches the latest Google style
   guides (Python, Shell, C++, Java, JS/TS, Go, etc.) converted to Markdown,
-  navigable by outline and by section rather than read whole.
+  and outlines, addresses, and searches them by section rather than serving
+  200 KB to be read whole.
 - **Offline Mode**: Local caching of style guides for fast, offline access,
   kept fresh with a single `sync` command.
 
@@ -26,8 +27,9 @@ You can run the tool directly without installing it using `uvx`:
 # Check and fix formatting for the current directory
 uvx --from readability-cli readability check . --fix
 
-# Get the Python style guide
+# Outline the Python style guide, then read one of its sections
 uvx --from readability-cli readability guide python
+uvx --from readability-cli readability guide python 2.2
 ```
 
 ## Installation
@@ -102,59 +104,66 @@ project-level configuration takes full precedence over the bundled defaults.
 
 ## Style Guides
 
-The `guide` command prints a Google style guide as Markdown, using the local
-cache when available:
+The `guide` command reads a Google style guide, using the local cache when
+available. It has five forms:
 
 ```bash
-# Get the Python style guide (uses local cache if available)
+# Which languages have a guide, and which are cached
+readability guide
+
+# The outline of one: every heading, a few KB where the guide is 200
 readability guide python
 
-# Force fetching the latest version from the web
-readability guide python --remote
+# One section, by index, heading text, or a parent-scoped path
+readability guide cpp 10.4
+readability guide shell "Function Comments"
+readability guide python "Imports > Decision"
 
-# Save a style guide to a file
-readability guide cpp --output cpp-style.md
+# Find wording that no heading names, reported by section
+readability guide python --grep f-string
 
-# Search a guide without printing it: the pipe carries it, you see matches
-readability guide python | grep -n "f-string"
-
-# Synchronize all supported style guides to the local cache
-readability sync
+# The whole guide, when you really do want all of it
+readability guide cpp --full
 ```
 
-A guide can exceed 100 KB, so printing one whole is rarely what you want.
-`--outline` and `--section` below cover navigating to a rule; piping to
-`grep` covers finding wording that no heading names. Neither leaves a copy
-behind, which is what a coding agent should do rather than redirecting a
-guide into the repository it is working on.
+A guide can exceed 200 KB, so the outline is what a bare invocation prints:
+listing the sections and fetching the one you need beats reading the lot.
+Nothing is written to disk, which is what a coding agent should do rather
+than redirecting a guide into the repository it is working on — use a shell
+redirect if you do want a copy.
+
+Only one of `REF`, `--grep`, and `--full` may be given; combining them is
+refused rather than resolved by a precedence rule you would have to know.
 
 ### Navigating a Guide
 
-`--outline` lists a guide's headings and `--section` prints just one of them,
-which turns "read 200 KB" into "list the sections, fetch the one you need":
+The outline gives each section an index to fetch it by, and flags the ones
+large enough to be worth knowing about first:
 
 ```bash
-# List every heading, with the index to pass to --section
-readability guide cpp --outline
-
-# Only the top two levels, for a bird's eye view of a large guide
-readability guide cpp --outline --depth 2
-
-# Print one section: its heading and everything nested under it
-readability guide shell --section "Function Comments"
-readability guide cpp --section 10.4
-
-# Sections can be saved like whole guides can
-readability guide python --section "Imports" --output imports.md
+$ readability guide cpp
+Google C++ Style Guide
+  1  Background
+    1.1  Goals of the Style Guide
+  2  C++ Version
+  3  Header Files  (1.7k words)
+    3.1  Self-contained Headers
+    ...
+# 140 sections · print one:  readability guide cpp 4.5.1
 ```
+
+Sizes appear only at 1200 words and above — the 4% of sections expensive
+enough that you would want warning. They include subsections, since that is
+what the reference returns. The trailing line goes to stderr, so it never
+contaminates a piped outline.
 
 A section reference can be any of the following:
 
 | Reference | Example |
 |-----------|---------|
-| Section index, as shown by `--outline` | `--section 2.2.4` |
-| Heading text, case-insensitive, or its slug | `--section "function comments"` |
-| A parent-scoped path, spaces around the `>` | `--section "Imports > Decision"` |
+| Section index, as shown by the outline | `2.2.4` |
+| Heading text, case-insensitive, or its slug | `"function comments"` |
+| A parent-scoped path, spaces around the `>` | `"Imports > Decision"` |
 
 Whole matches are preferred; a reference that matches nothing in full is
 retried as a substring of the heading text.
@@ -173,28 +182,45 @@ printed section number or the heading text over a positional index, since
 positional indices shift when an unnumbered guide is re-synced.
 
 A reference that matches several headings is reported rather than guessed at,
-listing the index and path of every candidate on stderr:
+listing every candidate on stderr:
 
 ```bash
-$ readability guide python --section Decision
+$ readability guide python Decision
 Error: 'Decision' matches 19 headings in the 'python' guide. Repeat with one of:
-  --section 2.1.4 (Python Language Rules > Lint > Decision)
-  --section 2.2.4 (Python Language Rules > Imports > Decision)
+  2.1.4 (Python Language Rules > Lint > Decision)
+  2.2.4 (Python Language Rules > Imports > Decision)
   ...
 ```
 
-Content goes to stdout and diagnostics to stderr, so both flags are safe to
+### Searching a Guide
+
+`--grep` answers the question the outline cannot: where a guide discusses
+something no heading is named after. Matches are grouped under the section
+holding them, so the follow-up call is a copy away:
+
+```bash
+$ readability guide python --grep f-string
+3.10  Python Style Rules > Strings
+    [f-string](https://docs.python.org/3/reference/lexical_analysis.html#f-strings),
+3.10.1  Python Style Rules > Strings > Logging
+    their first argument: Always call them with a string literal (not an f-string!)
+```
+
+Patterns are regular expressions, matched without regard to case. No matches
+exits 1, as `grep` does, so the command can gate a script. Output stops at 40
+lines and reports how many it left out.
+
+Content goes to stdout and diagnostics to stderr, so every form is safe to
 pipe. Headings inside fenced code blocks are ignored, which matters for the
 Shell and Python guides where `#` starts a comment.
 
 ### Supported Languages
 
-Use `readability languages` to see a full list of supported languages and
-their aliases. This command also indicates which guides are currently
-available in the local cache with a `[cached]` label:
+Run `readability guide` with no language for the full list and which guides
+are cached:
 
 ```bash
-$ readability languages
+$ readability guide
 Supported languages and their aliases:
   - r [cached]
   - c++, cpp [cached]
@@ -210,6 +236,16 @@ Supported languages and their aliases:
   - shell [cached]
   - ts, typescript [cached]
   - vim [cached]
+```
+
+Refresh the cache with `sync`, which takes languages or refetches everything:
+
+```bash
+# Refetch one guide, or a few
+readability sync python shell
+
+# Refetch all of them
+readability sync
 ```
 
 ### Offline Mode
