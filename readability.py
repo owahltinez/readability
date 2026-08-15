@@ -718,27 +718,30 @@ def _unique_reference(headings: Sequence[Heading], position: int) -> str:
 MAX_REPORTED_MATCHES = 15
 
 
-# Beyond this many matching lines a search is the wrong tool for the question
-MAX_REPORTED_LINES = 40
+def find_mentions(
+    content: str, headings: Sequence[Heading], text: str
+) -> list[int]:
+    """Find the sections whose body mentions some text.
 
-
-def search_guide(
-    content: str, headings: Sequence[Heading], pattern: re.Pattern[str]
-) -> list[tuple[int, list[str]]]:
-    """Find the lines matching a pattern, grouped by the section holding them.
+    This is a locator, not a search: it reports which sections to go and
+    read, and deliberately does not print the matching lines. Searching the
+    text of a guide is grep's job, and `--full` feeds it.
 
     Args:
         content: The full Markdown text of the guide.
         headings: The headings of the guide, in document order.
-        pattern: The compiled pattern to search each line for.
+        text: The text to look for, matched as a case-insensitive substring.
 
     Returns:
-        Pairs of (heading position, matching lines), in document order. The
-        section is the point: a bare line number says nothing about which
-        rule a match belongs to.
+        Positions of the innermost section holding each mention, in document
+        order and without repeats.
     """
-    # Walk headings alongside the lines so each match knows what encloses it
-    groups: list[tuple[int, list[str]]] = []
+    needle = text.lower()
+    if not needle:
+        return []
+
+    # Walk headings alongside the lines so each mention knows what encloses it
+    positions: list[int] = []
     position = -1
     upcoming = list(headings)
     for number, line in enumerate(content.splitlines()):
@@ -746,52 +749,13 @@ def search_guide(
             upcoming.pop(0)
             position += 1
 
-        if not pattern.search(line):
-            continue
+        # A mention above the first heading belongs to no section, and one
+        # section is worth reporting once however many times it mentions it
+        if position >= 0 and needle in line.lower():
+            if not positions or positions[-1] != position:
+                positions.append(position)
 
-        # Matches under one heading collect together rather than repeating it
-        if groups and groups[-1][0] == position:
-            groups[-1][1].append(line.strip())
-        else:
-            groups.append((position, [line.strip()]))
-
-    return groups
-
-
-def _echo_matches(
-    headings: Sequence[Heading],
-    groups: Sequence[tuple[int, list[str]]],
-) -> None:
-    """Print search results as sections, each above the lines that matched.
-
-    Args:
-        headings: The headings of the guide, in document order.
-        groups: Pairs of (heading position, matching lines).
-    """
-    shown = 0
-    for position, lines in groups:
-        if shown >= MAX_REPORTED_LINES:
-            break
-
-        # A match above the first heading has no section to be reported under
-        reference = (
-            _unique_reference(headings, position) if position >= 0 else ""
-        )
-        title = _describe_heading(headings, position) if position >= 0 else ""
-        click.echo(f"{reference}  {title}".strip())
-
-        # Count what was printed, not what the group held: a section cut off
-        # part way through would otherwise absorb its own overflow and the
-        # report below would go quiet about it
-        printed = lines[: MAX_REPORTED_LINES - shown]
-        for line in printed:
-            click.echo(f"    {line}")
-        shown += len(printed)
-
-    # Truncation the caller is not told about reads as 'that was everything'
-    total = sum(len(lines) for _, lines in groups)
-    if total > shown:
-        click.echo(f"... and {total - shown} more matching lines", err=True)
+    return positions
 
 
 def _example_reference(headings: Sequence[Heading]) -> str:
@@ -840,37 +804,53 @@ def _echo_outline(content: str, language: str) -> None:
         )
 
 
-def _echo_search(content: str, pattern: str, language: str) -> None:
-    """Search a guide and print the matches, or fail if there are none.
+def _report_no_heading(
+    content: str,
+    headings: Sequence[Heading],
+    reference: str,
+    language: str,
+) -> None:
+    """Fail a reference that names no heading, saying where to look instead.
+
+    A guide discusses plenty that no heading is named after, so a miss is
+    often a vocabulary mismatch rather than a mistake. Reporting the sections
+    that mention the words turns a dead end into the next command.
 
     Args:
         content: The full Markdown text of the guide.
-        pattern: The regular expression given on the command line.
-        language: The language whose guide is being searched.
+        headings: The headings of the guide, in document order.
+        reference: The section reference given on the command line.
+        language: The language whose guide is being read.
 
     Raises:
-        click.UsageError: If the pattern is not a valid regular expression.
-        SystemExit: If nothing matches, following grep's convention so that
-            the command can gate a script.
+        SystemExit: Always; this reports a failure.
     """
-    try:
-        # Prose is searched without regard to how the guide capitalises it
-        compiled = re.compile(pattern, re.IGNORECASE)
-    except re.error as e:
-        raise click.UsageError(f"Invalid --grep pattern '{pattern}': {e}")
+    click.echo(
+        f"Error: Found no heading matching '{reference}' in the "
+        f"'{language}' guide.",
+        err=True,
+    )
 
-    headings = parse_headings(content)
-    groups = search_guide(content, headings, compiled)
-
-    if not groups:
+    mentions = find_mentions(content, headings, reference)
+    if not mentions:
         click.echo(
-            f"Error: Found no line matching '{pattern}' in the "
-            f"'{language}' guide.",
+            f"Run 'readability guide {language}' to list its sections.",
             err=True,
         )
         sys.exit(1)
 
-    _echo_matches(headings, groups)
+    click.echo("It appears in these sections:", err=True)
+    for position in mentions[:MAX_REPORTED_MATCHES]:
+        suggestion = _unique_reference(headings, position)
+        click.echo(
+            f"  {suggestion}  {_describe_heading(headings, position)}",
+            err=True,
+        )
+    if len(mentions) > MAX_REPORTED_MATCHES:
+        click.echo(
+            f"  ... and {len(mentions) - MAX_REPORTED_MATCHES} more", err=True
+        )
+    sys.exit(1)
 
 
 def _select_section(content: str, reference: str, language: str) -> str:
@@ -891,13 +871,7 @@ def _select_section(content: str, reference: str, language: str) -> str:
     matches = find_headings(headings, reference)
 
     if not matches:
-        click.echo(
-            f"Error: Found no heading matching '{reference}' in the "
-            f"'{language}' guide. Run 'readability guide {language}' "
-            "to list its sections.",
-            err=True,
-        )
-        sys.exit(1)
+        _report_no_heading(content, headings, reference, language)
 
     # Reporting every candidate beats returning the first one silently, since
     # guides repeat headings ('Decision' appears under every Python rule).
@@ -941,18 +915,11 @@ def cli(ctx: click.Context, verbose: bool) -> None:
     is_flag=True,
     help="Print the whole guide, for grepping rather than reading.",
 )
-@click.option(
-    "--grep",
-    "pattern",
-    metavar="PATTERN",
-    help="Print lines matching PATTERN, under the section holding each.",
-)
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging.")
 def guide(
     language: Optional[str],
     reference: Optional[str],
     full: bool,
-    pattern: Optional[str],
     verbose: bool,
 ) -> None:
     """Read the Google style guide for LANGUAGE.
@@ -973,19 +940,8 @@ def guide(
 
     # Refusing beats picking a winner: a silent precedence rule is how the
     # caller ends up reading the wrong thing without being told.
-    selectors = [
-        name
-        for name, given in (
-            ("REF", reference),
-            ("--full", full),
-            ("--grep", pattern),
-        )
-        if given
-    ]
-    if len(selectors) > 1:
-        raise click.UsageError(
-            f"{' and '.join(selectors)} each select what to print; give one."
-        )
+    if full and reference:
+        raise click.UsageError("--full takes the whole guide, so REF cannot.")
 
     logger.info("Processing style guide for: %s", language)
 
@@ -994,8 +950,6 @@ def guide(
 
         if full:
             click.echo(content)
-        elif pattern:
-            _echo_search(content, pattern, language)
         elif reference:
             click.echo(_select_section(content, reference, language))
         else:

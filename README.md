@@ -105,7 +105,7 @@ project-level configuration takes full precedence over the bundled defaults.
 ## Style Guides
 
 The `guide` command reads a Google style guide, using the local cache when
-available. It has five forms:
+available. It has four forms:
 
 ```bash
 # Which languages have a guide, and which are cached
@@ -119,11 +119,9 @@ readability guide cpp 10.4
 readability guide shell "Function Comments"
 readability guide python "Imports > Decision"
 
-# Find wording that no heading names, reported by section
-readability guide python --grep f-string
-
-# The whole guide, when you really do want all of it
+# The whole guide, for grepping or when you really do want all of it
 readability guide cpp --full
+readability guide python --full | grep -i f-string
 ```
 
 A guide can exceed 200 KB, so the outline is what a bare invocation prints:
@@ -132,8 +130,8 @@ Nothing is written to disk, which is what a coding agent should do rather
 than redirecting a guide into the repository it is working on — use a shell
 redirect if you do want a copy.
 
-Only one of `REF`, `--grep`, and `--full` may be given; combining them is
-refused rather than resolved by a precedence rule you would have to know.
+`REF` and `--full` cannot be combined; that is refused rather than resolved
+by a precedence rule you would have to know.
 
 ### Navigating a Guide
 
@@ -192,23 +190,28 @@ Error: 'Decision' matches 19 headings in the 'python' guide. Repeat with one of:
   ...
 ```
 
-### Searching a Guide
+### When a Reference Misses
 
-`--grep` answers the question the outline cannot: where a guide discusses
-something no heading is named after. Matches are grouped under the section
-holding them, so the follow-up call is a copy away:
+A guide discusses plenty that no heading is named after, so a reference that
+matches nothing is usually a vocabulary mismatch rather than a mistake. The
+sections that mention the words are reported, which turns the miss into the
+next command:
 
 ```bash
-$ readability guide python --grep f-string
-3.10  Python Style Rules > Strings
-    [f-string](https://docs.python.org/3/reference/lexical_analysis.html#f-strings),
-3.10.1  Python Style Rules > Strings > Logging
-    their first argument: Always call them with a string literal (not an f-string!)
+$ readability guide python f-string
+Error: Found no heading matching 'f-string' in the 'python' guide.
+It appears in these sections:
+  3.10  Python Style Rules > Strings
+  3.10.1  Python Style Rules > Strings > Logging
 ```
 
-Patterns are regular expressions, matched without regard to case. No matches
-exits 1, as `grep` does, so the command can gate a script. Output stops at 40
-lines and reports how many it left out.
+This locates a rule; it does not search text. For that, pipe `--full` to
+`grep`, which you already know and which brings its own `-i`, `-A`, `-c` and
+the rest:
+
+```bash
+readability guide python --full | grep -in -A2 "f-string"
+```
 
 Content goes to stdout and diagnostics to stderr, so every form is safe to
 pipe. Headings inside fenced code blocks are ignored, which matters for the

@@ -1401,101 +1401,77 @@ def test_sync_rejects_an_unsupported_language(tmp_path: Path) -> None:
     assert "not supported" in result.output
 
 
-def test_grep_reports_the_owning_section(tmp_path: Path, monkeypatch) -> None:
-    """A line number in a 3700-line stream does not say which rule it is."""
-    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
-    _write_guide(tmp_path, NUMBERED_GUIDE)
-
-    runner = CliRunner()
-    result = runner.invoke(cli, ["guide", "python", "--grep", "full package"])
-
-    assert result.exit_code == 0
-    # The section reference is the point: it is what the next call needs,
-    # and the path with it says which of 19 'Decision' headings this is
-    assert "2.2.4  Language Rules > Imports > Decision" in result.stdout
-    assert "Use full package paths." in result.stdout
-
-
-def test_grep_reference_is_usable(tmp_path: Path, monkeypatch) -> None:
-    """Whatever grep prints as a reference must resolve on its own."""
-    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
-    _write_guide(tmp_path, NUMBERED_GUIDE)
-
-    runner = CliRunner()
-    result = runner.invoke(cli, ["guide", "python", "--grep", "full package"])
-
-    reference = result.stdout.splitlines()[0].split("  ")[0].strip()
-    followed = runner.invoke(cli, ["guide", "python", reference])
-    assert followed.exit_code == 0, f"{reference!r} did not resolve"
-
-
-def test_grep_is_case_insensitive_and_takes_a_pattern(
+def test_unmatched_reference_reports_where_the_words_appear(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """Searching prose should not require matching its capitalisation."""
+    """A miss should hand back the sections that mention it, not a dead end."""
     monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
-    _write_guide(tmp_path, NUMBERED_GUIDE)
+    _write_guide(
+        tmp_path,
+        "# Guide\n\n## 1 Strings\n\nPrefer an f-string here.\n\n"
+        "### 1.1 Logging\n\nNever pass an f-string to a logger.\n\n"
+        "## 2 Imports\n\nUse full paths.\n",
+    )
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["guide", "python", "--grep", "FULL PACK.ge"])
-
-    assert result.exit_code == 0
-    assert "Use full package paths." in result.stdout
-
-
-def test_grep_without_matches_exits_nonzero(
-    tmp_path: Path, monkeypatch
-) -> None:
-    """Grep's contract is that no matches is a failure, so scripts can gate."""
-    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
-    _write_guide(tmp_path, NUMBERED_GUIDE)
-
-    runner = CliRunner()
-    result = runner.invoke(cli, ["guide", "python", "--grep", "concurrency"])
+    result = runner.invoke(cli, ["guide", "python", "f-string"])
 
     assert result.exit_code == 1
+    # Nothing partial reaches a pipeline
     assert result.stdout == ""
-    assert "no line" in result.stderr.lower()
+    assert "1  Strings" in result.stderr
+    assert "1.1  Strings > Logging" in result.stderr
+    # A section that never mentions it is not offered
+    assert "Imports" not in result.stderr
 
 
-def test_grep_rejects_an_invalid_pattern(tmp_path: Path, monkeypatch) -> None:
-    """A broken regex is a typo to report, not a traceback."""
+def test_unmatched_reference_suggestions_resolve(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Every reference offered must select a section on its own."""
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    _write_guide(
+        tmp_path,
+        "# Guide\n\n## 1 Strings\n\nPrefer an f-string here.\n\n"
+        "### 1.1 Logging\n\nNever pass an f-string to a logger.\n",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["guide", "python", "f-string"])
+
+    offered = [
+        line.split("  ")[0].strip()
+        for line in result.stderr.splitlines()
+        if line.startswith("  ")
+    ]
+    assert offered
+    for reference in offered:
+        followed = runner.invoke(cli, ["guide", "python", reference])
+        assert followed.exit_code == 0, f"{reference!r} did not resolve"
+
+
+def test_unmatched_reference_found_nowhere_points_at_the_outline(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """With nothing to offer, the outline is the only useful next step."""
     monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
     _write_guide(tmp_path, NUMBERED_GUIDE)
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["guide", "python", "--grep", "["])
+    result = runner.invoke(cli, ["guide", "python", "concurrency"])
 
-    assert result.exit_code != 0
-    assert "pattern" in result.output.lower()
+    assert result.exit_code == 1
+    assert "readability guide python" in result.stderr
+    assert "appears in" not in result.stderr
 
 
-def test_grep_and_a_reference_is_refused(tmp_path: Path, monkeypatch) -> None:
-    """Two ways to select content cannot both win silently."""
+def test_grep_flag_is_gone(tmp_path: Path, monkeypatch) -> None:
+    """Text search belongs to grep, which --full already feeds."""
     monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
     _write_guide(tmp_path, NUMBERED_GUIDE)
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["guide", "python", "2.2", "--grep", "imports"])
+    result = runner.invoke(cli, ["guide", "python", "--grep", "imports"])
 
     assert result.exit_code != 0
-
-
-def test_grep_counts_the_lines_it_left_out(tmp_path: Path, monkeypatch) -> None:
-    """Truncating mid-section must still report the true remainder.
-
-    Counting a whole group as shown when only part of it was printed hides
-    the overflow entirely, which is the silent truncation the cap exists to
-    avoid.
-    """
-    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
-    body = "\n".join(f"match {n}" for n in range(50))
-    _write_guide(tmp_path, f"# Guide\n\n## 1 One\n\n{body}\n")
-
-    runner = CliRunner()
-    result = runner.invoke(cli, ["guide", "python", "--grep", "match"])
-
-    assert result.exit_code == 0
-    printed = [x for x in result.stdout.splitlines() if x.startswith("    ")]
-    assert len(printed) == 40
-    assert "and 10 more" in result.stderr
+    assert "no such option" in result.output.lower()
