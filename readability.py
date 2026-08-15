@@ -638,6 +638,43 @@ def find_headings(headings: Sequence[Heading], reference: str) -> list[int]:
     return []
 
 
+def _section_bounds(
+    lines: Sequence[str], headings: Sequence[Heading], position: int
+) -> tuple[int, int]:
+    """Locate the lines a section occupies within a guide.
+
+    Everything that decides what a section holds lives here, so that a caller
+    asking which section holds a line and a caller printing that section
+    cannot disagree about the answer.
+
+    Args:
+        lines: The guide's lines, as split by the caller.
+        headings: The headings of the guide, in document order.
+        position: Index into headings of the section to bound.
+
+    Returns:
+        A half-open range of line indices, from the heading itself up to the
+        next heading of the same or a higher level, so nested subsections
+        travel with their parent.
+    """
+    heading = headings[position]
+
+    end = len(lines)
+    for following in headings[position + 1 :]:
+        if following.level <= heading.level:
+            end = following.line
+            break
+
+    # Shed the trailing anchors that belong to the following heading
+    while end > heading.line and (
+        not lines[end - 1].strip()
+        or ANCHOR_PATTERN.match(lines[end - 1].strip())
+    ):
+        end -= 1
+
+    return heading.line, end
+
+
 def extract_section(
     content: str, headings: Sequence[Heading], position: int
 ) -> str:
@@ -653,22 +690,9 @@ def extract_section(
         or a higher level, so nested subsections travel with their parent.
     """
     lines = content.splitlines()
-    heading = headings[position]
+    start, end = _section_bounds(lines, headings, position)
 
-    end = len(lines)
-    for following in headings[position + 1 :]:
-        if following.level <= heading.level:
-            end = following.line
-            break
-
-    # Shed the trailing anchors that belong to the following heading
-    section = lines[heading.line : end]
-    while section and (
-        not section[-1].strip() or ANCHOR_PATTERN.match(section[-1].strip())
-    ):
-        section.pop()
-
-    return "\n".join(section)
+    return "\n".join(lines[start:end])
 
 
 def _describe_heading(headings: Sequence[Heading], position: int) -> str:
@@ -734,28 +758,42 @@ def find_mentions(
 
     Returns:
         Positions of the innermost section holding each mention, in document
-        order and without repeats.
+        order and without repeats. Every one of them prints the text and can
+        be named on the command line.
     """
     needle = text.lower()
     if not needle:
         return []
 
-    # Walk headings alongside the lines so each mention knows what encloses it
-    positions: list[int] = []
-    position = -1
-    upcoming = list(headings)
-    for number, line in enumerate(content.splitlines()):
-        while upcoming and upcoming[0].line == number:
-            upcoming.pop(0)
-            position += 1
+    lines = content.splitlines()
 
-        # A mention above the first heading belongs to no section, and one
-        # section is worth reporting once however many times it mentions it
-        if position >= 0 and needle in line.lower():
-            if not positions or positions[-1] != position:
-                positions.append(position)
+    # Only an indexed heading can be offered. The document title has no index
+    # because it is the whole guide rather than a section within it, so
+    # crediting the preamble to it would suggest reading everything.
+    sections = [
+        (position, _section_bounds(lines, headings, position))
+        for position in range(len(headings))
+        if headings[position].index
+    ]
 
-    return positions
+    found: set[int] = set()
+    for number, line in enumerate(lines):
+        if needle not in line.lower():
+            continue
+
+        # Bounds nest, so the last section still covering the line is the
+        # innermost one that prints it. A section sheds the anchors of the
+        # heading below it, and those fall to an ancestor rather than to the
+        # section they merely trail.
+        holders = [
+            position
+            for position, (start, end) in sections
+            if start <= number < end
+        ]
+        if holders:
+            found.add(holders[-1])
+
+    return sorted(found)
 
 
 def _example_reference(headings: Sequence[Heading]) -> str:

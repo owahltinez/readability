@@ -18,7 +18,9 @@ from readability import (
     _unique_reference,
     cli,
     convert_to_markdown,
+    extract_section,
     find_headings,
+    find_mentions,
     get_guide,
     get_guide_content,
     get_guides_dir,
@@ -1188,6 +1190,47 @@ def test_every_shipped_guide_heading_is_addressable() -> None:
             )
 
 
+# Words the corpus uses often enough to exercise many sections at once.
+# 'truefalse' appears only inside pyguide's anchors, which is the shape that
+# used to be credited to whichever section happened to precede them.
+MENTION_PROBES = (
+    "truefalse",
+    "indent",
+    "naming",
+    "comment",
+    "false",
+    "spaces",
+)
+
+
+def test_every_shipped_guide_suggestion_prints_the_words() -> None:
+    """A suggested section must be addressable and must hold the words.
+
+    Anchors made the two disagree: find_mentions walked lines and credited
+    them to the heading above, while extract_section hands a trailing anchor
+    to the heading below. Reading a suggestion has to show what was searched
+    for, in every guide, or the suggestion is a dead end.
+    """
+    guides = _shipped_guides()
+    assert len(guides) >= 10, f"expected the shipped corpus, got {len(guides)}"
+
+    for language, content in guides:
+        headings = parse_headings(content)
+        for probe in MENTION_PROBES:
+            for position in find_mentions(content, headings, probe):
+                heading = headings[position]
+                assert heading.index, (
+                    f"{language}: {probe!r} suggested the unindexed "
+                    f"{heading.title!r}"
+                )
+
+                section = extract_section(content, headings, position)
+                assert probe in section.lower(), (
+                    f"{language}: {probe!r} suggested {heading.index} "
+                    f"({heading.title!r}), which does not contain it"
+                )
+
+
 @patch("readability.cli")
 @patch("logging.basicConfig")
 def test_logging_is_quiet_by_default(
@@ -1429,6 +1472,75 @@ def test_unmatched_reference_found_nowhere_points_at_the_outline(
     assert result.exit_code == 1
     assert "readability guide python" in result.stderr
     assert "appears in" not in result.stderr
+
+
+def test_mentions_in_the_preamble_belong_to_no_section() -> None:
+    """A guide's preamble sits under its title, which is the whole document.
+
+    pyguide opens with an 87-line table of contents. Crediting that to the
+    title would suggest a reference that prints every byte of the guide.
+    """
+    content = (
+        "# Guide\n\nEvery rule here is advisory.\n\n"
+        "## 1 Strings\n\nPrefer str.format.\n"
+    )
+    headings = parse_headings(content)
+
+    assert find_mentions(content, headings, "advisory") == []
+
+
+def test_mentions_never_offer_the_whole_guide(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Tests that a preamble mention points at the outline, not the title."""
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    _write_guide(
+        tmp_path,
+        "# Guide\n\nEvery rule here is advisory.\n\n"
+        "## 1 Strings\n\nPrefer str.format.\n",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["guide", "python", "advisory"])
+
+    assert result.exit_code == 1
+    assert '"Guide"' not in result.stderr
+    assert "readability guide python" in result.stderr
+
+
+def test_mentions_land_on_a_section_that_prints_them() -> None:
+    """Tests that an anchor is credited to a section which still holds it.
+
+    A heading's anchors sit on the lines above it, and extract_section sheds
+    them from the section they trail. The section that merely precedes an
+    anchor therefore does not print it; the nearest ancestor still does.
+    """
+    content = (
+        "# Guide\n\n## 1 Language Rules\n\n### 1.1 Alpha\n\nAlpha body.\n\n"
+        '<a id="beta-widget"></a>\n\n### 1.2 Beta\n\nBeta body.\n'
+    )
+    headings = parse_headings(content)
+    mentions = find_mentions(content, headings, "widget")
+
+    assert [headings[position].index for position in mentions] == ["1"]
+    for position in mentions:
+        assert "widget" in extract_section(content, headings, position)
+
+
+def test_mentions_credit_the_innermost_section() -> None:
+    """Tests that a mention names the subsection holding it, not an ancestor.
+
+    A section carries its subsections, so every ancestor of a mention also
+    contains it. Only the innermost is worth reading.
+    """
+    content = (
+        "# Guide\n\n## 1 Language Rules\n\nRules follow.\n\n"
+        "### 1.1 Alpha\n\nAlpha uses a widget.\n"
+    )
+    headings = parse_headings(content)
+    mentions = find_mentions(content, headings, "widget")
+
+    assert [headings[position].index for position in mentions] == ["1.1"]
 
 
 def test_grep_flag_is_gone(tmp_path: Path, monkeypatch) -> None:
