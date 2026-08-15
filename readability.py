@@ -203,6 +203,32 @@ def get_local_path(filename: str) -> str:
     return os.path.join(get_guides_dir(), f"{base_name}.md")
 
 
+def refresh_guide(filename: str) -> str:
+    """Fetch one guide from the web, convert it, and replace the local copy.
+
+    Args:
+        filename: The guide's path within the style guide repository.
+
+    Returns:
+        The markdown content of the style guide.
+
+    Raises:
+        click.ClickException: If the HTTP request fails.
+    """
+    content = get_guide_content(f"{BASE_URL}{filename}")
+    markdown_content = convert_to_markdown(content, filename)
+
+    if not os.path.exists(get_guides_dir()):
+        os.makedirs(get_guides_dir(), exist_ok=True)
+
+    local_path = get_local_path(filename)
+    with open(local_path, "w", encoding="utf-8") as f:
+        f.write(markdown_content)
+    logger.debug("Cached style guide locally: %s", local_path)
+
+    return markdown_content
+
+
 def get_guide(language: str, remote: bool = False) -> str:
     """Orchestrate fetching and converting the style guide for a given language.
 
@@ -234,22 +260,7 @@ def get_guide(language: str, remote: bool = False) -> str:
         with open(local_path, "r", encoding="utf-8") as f:
             return f.read()
 
-    # Build the full URL and fetch the raw content
-    url = f"{BASE_URL}{filename}"
-    content = get_guide_content(url)
-
-    # Convert the content to Markdown format
-    markdown_content = convert_to_markdown(content, filename)
-
-    # Save to local cache for future use
-    if not os.path.exists(get_guides_dir()):
-        os.makedirs(get_guides_dir(), exist_ok=True)
-
-    with open(local_path, "w", encoding="utf-8") as f:
-        f.write(markdown_content)
-    logger.debug("Cached style guide locally: %s", local_path)
-
-    return markdown_content
+    return refresh_guide(filename)
 
 
 # A fence opens or closes a code block; anything inside is sample code, not
@@ -1051,15 +1062,8 @@ def sync(languages: Sequence[str], verbose: bool) -> None:
     for filename in filenames:
         click.echo(f"Syncing {filename}...", err=True)
         try:
-            url = f"{BASE_URL}{filename}"
-            content = get_guide_content(url)
-            markdown_content = convert_to_markdown(content, filename)
-            local_path = get_local_path(filename)
-
-            with open(local_path, "w", encoding="utf-8") as f:
-                f.write(markdown_content)
-
-            click.echo(f"  synced to {local_path}", err=True)
+            refresh_guide(filename)
+            click.echo(f"  synced to {get_local_path(filename)}", err=True)
             success_count += 1
         except Exception as e:
             logger.error("Failed to sync %s: %s", filename, e)
