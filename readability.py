@@ -1339,8 +1339,8 @@ def _default_config_args(
 TOOL_RUNNERS = {
     "ruff": ["uvx", "ruff>=0.15,<0.16"],
     "pyrefly": ["uvx", "pyrefly>=1.2,<2"],
-    "biome": ["npx", "-y", "@biomejs/biome"],
-    "prettier": ["npx", "-y", "prettier"],
+    "biome": ["npx", "-y", "@biomejs/biome@^2.5"],
+    "prettier": ["npx", "-y", "prettier@^3.9"],
 }
 
 
@@ -1360,13 +1360,17 @@ def _tool_command(binary: str, project_root: Path) -> list[str]:
         to the bare name when the tool has no runner, leaving PATH to
         resolve it as before.
     """
-    # What the project installed for itself, whichever ecosystem it came from
-    for local in (
-        project_root / "node_modules" / ".bin" / binary,
-        project_root / ".venv" / "bin" / binary,
-    ):
-        if local.exists():
-            return [str(local)]
+    # npm keeps a project's tools out of PATH, so this is the only way to
+    # reach the version it installed. A Python virtualenv is deliberately
+    # not searched: activating one already puts its tools on PATH, so the
+    # lookup would add nothing except running a binary chosen by whichever
+    # directory the caller happened to be standing in.
+    local = project_root / "node_modules" / ".bin" / binary
+    # Existing is not being runnable: a plain file or a directory of the
+    # right name would otherwise win here and fail the next gate, hiding
+    # both the copy on PATH and the runner behind it.
+    if local.is_file() and os.access(local, os.X_OK):
+        return [str(local)]
 
     # Then whatever the machine already has, which needs no download at all
     found = shutil.which(binary)

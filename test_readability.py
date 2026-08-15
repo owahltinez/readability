@@ -11,6 +11,7 @@ from click.testing import CliRunner
 
 from readability import (
     LANGUAGE_MAP,
+    TOOL_RUNNERS,
     _bundled_config,
     _get_tool_definitions,
     _has_project_config,
@@ -410,7 +411,7 @@ def test_check_command_biome(
     assert [
         "npx",
         "-y",
-        "@biomejs/biome",
+        "@biomejs/biome@^2.5",
         "lint",
         "--no-errors-on-unmatched",
         "script.js",
@@ -418,7 +419,7 @@ def test_check_command_biome(
     assert [
         "npx",
         "-y",
-        "@biomejs/biome",
+        "@biomejs/biome@^2.5",
         "format",
         "--no-errors-on-unmatched",
         "script.js",
@@ -1713,7 +1714,7 @@ def test_biome_is_invoked_by_its_real_package_name(tmp_path: Path) -> None:
         assert "biome" not in biome[key], (
             f"{key} names the wrong npm package: {biome[key]}"
         )
-        assert "@biomejs/biome" in biome[key]
+        assert any(a.startswith("@biomejs/biome") for a in biome[key])
 
 
 def test_node_tools_prefer_a_project_local_install(tmp_path: Path) -> None:
@@ -1742,7 +1743,8 @@ def test_node_tools_fall_back_to_npx(tmp_path: Path) -> None:
     }
 
     cmd = tools["prettier"]["check_format"]
-    assert cmd[:3] == ["npx", "-y", "prettier"]
+    assert cmd[:2] == ["npx", "-y"]
+    assert cmd[2].startswith("prettier@")
 
 
 def test_python_tools_fall_back_to_a_pinned_runner(tmp_path: Path) -> None:
@@ -1768,8 +1770,46 @@ def test_python_tools_fall_back_to_a_pinned_runner(tmp_path: Path) -> None:
     assert pyrefly[1].startswith("pyrefly>=")
 
 
-def test_python_tools_prefer_a_project_virtualenv(tmp_path: Path) -> None:
-    """A project's own venv pins the version its findings were written for."""
+def test_an_installed_tool_beats_the_runner(tmp_path: Path) -> None:
+    """Nothing is downloaded when the machine already has the tool."""
+    with patch("shutil.which", side_effect=lambda x: f"/usr/bin/{x}"):
+        tools = {
+            t["name"]: t for t in _get_tool_definitions(Path("f.py"), tmp_path)
+        }
+
+    assert tools["ruff"]["check"][0] == "/usr/bin/ruff"
+    assert "uvx" not in tools["ruff"]["check"]
+
+
+def test_a_local_file_that_cannot_run_is_not_chosen(tmp_path: Path) -> None:
+    """Existing is not the same as being runnable.
+
+    A non-executable file, or a directory, used to win resolution and then
+    fail the very next gate, hiding both the copy on PATH and the runner.
+    Three real findings disappeared and the command exited 0.
+    """
+    node = tmp_path / "node_modules" / ".bin"
+    node.mkdir(parents=True)
+    (node / "biome").touch(mode=0o644)
+    (node / "prettier").mkdir()
+
+    with patch("shutil.which", return_value=None):
+        tools = {
+            t["name"]: t for t in _get_tool_definitions(Path("f.ts"), tmp_path)
+        }
+
+    assert tools["biome"]["check"][0] == "npx"
+    assert tools["prettier"]["check_format"][0] == "npx"
+
+
+def test_resolution_ignores_a_project_virtualenv(tmp_path: Path) -> None:
+    """A venv on the path is already on PATH; trusting the directory is not.
+
+    Preferring ./.venv/bin meant `readability check` executed a binary
+    belonging to whatever directory the caller happened to stand in, which
+    under --fix was handed write access to their sources. Activating a venv
+    puts its tools on PATH anyway, so the lookup bought nothing.
+    """
     local = tmp_path / ".venv" / "bin"
     local.mkdir(parents=True)
     binary = local / "ruff"
@@ -1781,15 +1821,12 @@ def test_python_tools_prefer_a_project_virtualenv(tmp_path: Path) -> None:
             t["name"]: t for t in _get_tool_definitions(Path("f.py"), tmp_path)
         }
 
-    assert tools["ruff"]["check"][0] == str(binary)
+    assert str(binary) not in tools["ruff"]["check"]
+    assert tools["ruff"]["check"][0] == "uvx"
 
 
-def test_an_installed_tool_beats_the_runner(tmp_path: Path) -> None:
-    """Nothing is downloaded when the machine already has the tool."""
-    with patch("shutil.which", side_effect=lambda x: f"/usr/bin/{x}"):
-        tools = {
-            t["name"]: t for t in _get_tool_definitions(Path("f.py"), tmp_path)
-        }
-
-    assert tools["ruff"]["check"][0] == "/usr/bin/ruff"
-    assert "uvx" not in tools["ruff"]["check"]
+def test_every_runner_pins_a_version(tmp_path: Path) -> None:
+    """An unpinned fetch changes findings with the project unchanged."""
+    for binary, runner in TOOL_RUNNERS.items():
+        spec = runner[-1]
+        assert "<" in spec or "@" in spec, f"{binary} is unpinned: {spec}"
