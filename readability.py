@@ -1116,6 +1116,11 @@ def check(paths: Sequence[str], fix: bool, verbose: bool) -> None:
         )
         sys.exit(1)
 
+    # Findings remain a failed check even when a tool reports that it could
+    # not process any files (for example, a Biome configuration error).
+    if report.findings:
+        sys.exit(1)
+
     # Having run nothing is not a pass. Reporting it as one is how this
     # command became a silent no-op wherever its tools were absent, gating
     # nothing while every caller read the exit code as approval.
@@ -1137,13 +1142,19 @@ def check(paths: Sequence[str], fix: bool, verbose: bool) -> None:
         )
         return
 
-    if report.findings:
-        sys.exit(1)
+    checked_path_count = len(paths) - len(report.unverified_paths)
+    if report.unverified_paths:
+        click.echo(
+            f"Warning: nothing was checked for "
+            f"{len(report.unverified_paths)} path(s): "
+            f"{', '.join(map(str, report.unverified_paths))}.",
+            err=True,
+        )
 
     # Findings are the only thing this command printed, so a clean run said
     # nothing at all and left the caller unable to tell it from a no-op.
     click.echo(
-        f"No findings in {len(paths)} path(s) "
+        f"No findings in {checked_path_count} path(s) "
         f"({', '.join(sorted(report.ran))}).",
         err=True,
     )
@@ -1155,21 +1166,25 @@ class CheckReport:
 
     Attributes:
         findings: Whether any tool that ran reported something.
-        ran: Names of the tools that completed at least one process. This
-            records what happened, not what was intended: a tool that
-            resolved but never started belongs in failed, or a check that
-            verified nothing reports itself as clean.
+        ran: Names of the tools that processed at least one file. This records
+            what happened, not what was intended. A tool that resolved but
+            never started belongs in failed, and a tool that explicitly
+            reported processing no files is not recorded as having run.
         skipped: Names of the tools that were applicable but not installed.
             Tools with no trigger file are in neither set: they were never
             wanted, so passing without them is not a gap in coverage.
         failed: Names of the tools that started and could not finish, by
             failing to exec or by running past the timeout.
+        unverified_paths: Requested paths for which no tool processed a file.
+            Keeping these paths through aggregation prevents a checked path
+            from hiding another path that a tool ignored.
     """
 
     findings: bool = False
     ran: set[str] = dataclasses.field(default_factory=set)
     skipped: set[str] = dataclasses.field(default_factory=set)
     failed: set[str] = dataclasses.field(default_factory=set)
+    unverified_paths: list[Path] = dataclasses.field(default_factory=list)
 
     def absorb(self, other: "CheckReport") -> None:
         """Fold another report into this one.
@@ -1181,6 +1196,7 @@ class CheckReport:
         self.ran |= other.ran
         self.skipped |= other.skipped
         self.failed |= other.failed
+        self.unverified_paths.extend(other.unverified_paths)
 
 
 def check_paths(
@@ -1219,7 +1235,10 @@ def check_paths(
 
     report = CheckReport()
     for path in requested_paths:
-        report.absorb(_check_path(path, root, fix=fix))
+        path_report = _check_path(path, root, fix=fix)
+        if not path_report.ran:
+            path_report.unverified_paths.append(path)
+        report.absorb(path_report)
     return report
 
 
@@ -1278,12 +1297,20 @@ def _should_run_tool(
         (project_root / t).exists() for t in tool["trigger"]
     )
 
-    # For files, also check if the extension matches one of the supported ones
+    # Files must match one of the tool's supported extensions.
     if path.is_file():
         return has_trigger and path.suffix in tool["extensions"]
 
-    # For directories, the existence of a trigger file is sufficient
-    return has_trigger
+    if not has_trigger:
+        return False
+
+    # A directory trigger alone is not evidence that the tool checked a file.
+    # Several tools deliberately exit zero when nothing matches, which would
+    # otherwise turn an unsupported-only tree into a reported clean result.
+    return any(
+        candidate.is_file() and candidate.suffix in tool["extensions"]
+        for candidate in path.rglob("*")
+    )
 
 
 def _tool_is_installed(tool_name: str, tool_config: dict[str, Any]) -> bool:
@@ -1319,12 +1346,15 @@ def _bundled_config(tool_name: str) -> Path:
     """Get the path to the bundled default configuration for a tool.
 
     Args:
-        tool_name: The name of the tool (e.g. "ruff", "pyrefly").
+        tool_name: The name of the tool (e.g. "ruff", "pyrefly", "biome").
 
     Returns:
         The path to the bundled default config file.
     """
-    return Path(__file__).parent / "configs" / f"{tool_name}.toml"
+    filename = (
+        "biome-default.json" if tool_name == "biome" else f"{tool_name}.toml"
+    )
+    return Path(__file__).parent / "configs" / filename
 
 
 def _has_project_config(
@@ -1456,6 +1486,26 @@ def _get_tool_definitions(
     pyrefly_config = _default_config_args(
         project_root, ["pyrefly.toml"], "pyrefly"
     )
+    biome_config = []
+    if not any(
+        (project_root / filename).exists()
+        for filename in ("biome.json", "biome.jsonc")
+    ):
+        biome_config = ["--config-path", str(_bundled_config("biome"))]
+        ignore_files = (
+            project_root / ".gitignore",
+            project_root / ".ignore",
+            project_root / ".git" / "info" / "exclude",
+        )
+        if any(ignore_file.is_file() for ignore_file in ignore_files):
+            biome_config.extend(
+                [
+                    "--vcs-enabled=true",
+                    "--vcs-client-kind=git",
+                    "--vcs-use-ignore-file=true",
+                    f"--vcs-root={project_root}",
+                ]
+            )
 
     # Resolved once so every command for a tool reaches the same executable
     ruff = _tool_command("ruff", project_root)
@@ -1511,12 +1561,14 @@ def _get_tool_definitions(
             "check": [
                 *biome,
                 "lint",
+                *biome_config,
                 "--no-errors-on-unmatched",
                 path_str,
             ],
             "check_format": [
                 *biome,
                 "format",
+                *biome_config,
                 "--no-errors-on-unmatched",
                 path_str,
             ],
@@ -1524,6 +1576,7 @@ def _get_tool_definitions(
                 *biome,
                 "lint",
                 "--write",
+                *biome_config,
                 "--no-errors-on-unmatched",
                 path_str,
             ],
@@ -1531,6 +1584,7 @@ def _get_tool_definitions(
                 *biome,
                 "format",
                 "--write",
+                *biome_config,
                 "--no-errors-on-unmatched",
                 path_str,
             ],
@@ -1622,11 +1676,13 @@ def _run_tool(
             # and report what they could not deal with.
             for phase in ("format", "fix"):
                 if phase in tool_config:
-                    _execute_tool_command(tool_config[phase])
-                    report.ran.add(tool_name)
+                    result = _capture_tool_command(tool_config[phase])
+                    if _tool_checked_files(tool_name, result):
+                        report.ran.add(tool_name)
         elif "check_format" in tool_config:
             result = _capture_tool_command(tool_config["check_format"])
-            report.ran.add(tool_name)
+            if _tool_checked_files(tool_name, result):
+                report.ran.add(tool_name)
             # gofmt reports by naming files rather than by exit code
             if result.returncode != 0 or (
                 tool_name == "go fmt" and result.stdout.strip()
@@ -1639,7 +1695,8 @@ def _run_tool(
 
         if "check" in tool_config:
             result = _capture_tool_command(tool_config["check"])
-            report.ran.add(tool_name)
+            if _tool_checked_files(tool_name, result):
+                report.ran.add(tool_name)
             if result.returncode != 0:
                 report.findings = True
                 click.echo(
@@ -1656,6 +1713,26 @@ def _run_tool(
     return report
 
 
+def _tool_checked_files(
+    tool_name: str, result: subprocess.CompletedProcess
+) -> bool:
+    """Report whether a completed command actually processed any files.
+
+    Args:
+        tool_name: The tool whose command completed.
+        result: The completed subprocess.
+
+    Returns:
+        False when Biome explicitly reports that it checked zero files.
+    """
+    if tool_name != "biome":
+        return True
+    output = f"{result.stdout or ''}\n{result.stderr or ''}"
+    # Biome 1.x and 2.x use these summaries for an unmatched target.
+    zero_file_summaries = ("Checked 0 files", "Formatted 0 files")
+    return not any(summary in output for summary in zero_file_summaries)
+
+
 def _capture_tool_command(cmd: list[str]) -> subprocess.CompletedProcess:
     """Run a tool and capture what it said, whatever its exit code.
 
@@ -1663,7 +1740,7 @@ def _capture_tool_command(cmd: list[str]) -> subprocess.CompletedProcess:
         cmd: The command list to execute.
 
     Returns:
-        The completed process, for the caller to read an exit code off.
+        The completed process, including captured output and its exit code.
 
     Raises:
         subprocess.SubprocessError: If the command outlives the timeout.
@@ -1676,25 +1753,6 @@ def _capture_tool_command(cmd: list[str]) -> subprocess.CompletedProcess:
         text=True,
         check=False,
         timeout=DEFAULT_TIMEOUT,
-    )
-
-
-def _execute_tool_command(cmd: list[str]) -> None:
-    """Execute a tool command, raising if it exits with a non-zero code.
-
-    Args:
-        cmd: The command list to execute.
-
-    Raises:
-        subprocess.SubprocessError: If the command outlives the timeout.
-        OSError: If the command cannot be started.
-    """
-    logger.debug("Executing: %s", " ".join(cmd))
-    # check=False: a fixer exits non-zero when findings are left over, and
-    # treating that as an error aborted the run before the check that
-    # reports them, so --fix passed on files the plain check failed.
-    subprocess.run(
-        cmd, capture_output=True, check=False, timeout=DEFAULT_TIMEOUT
     )
 
 
