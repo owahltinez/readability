@@ -769,9 +769,13 @@ def _echo_matches(
         title = _describe_heading(headings, position) if position >= 0 else ""
         click.echo(f"{reference}  {title}".strip())
 
-        for line in lines[: MAX_REPORTED_LINES - shown]:
+        # Count what was printed, not what the group held: a section cut off
+        # part way through would otherwise absorb its own overflow and the
+        # report below would go quiet about it
+        printed = lines[: MAX_REPORTED_LINES - shown]
+        for line in printed:
             click.echo(f"    {line}")
-        shown += len(lines)
+        shown += len(printed)
 
     # Truncation the caller is not told about reads as 'that was everything'
     total = sum(len(lines) for _, lines in groups)

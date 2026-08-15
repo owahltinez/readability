@@ -1479,3 +1479,23 @@ def test_grep_and_a_reference_is_refused(tmp_path: Path, monkeypatch) -> None:
     result = runner.invoke(cli, ["guide", "python", "2.2", "--grep", "imports"])
 
     assert result.exit_code != 0
+
+
+def test_grep_counts_the_lines_it_left_out(tmp_path: Path, monkeypatch) -> None:
+    """Truncating mid-section must still report the true remainder.
+
+    Counting a whole group as shown when only part of it was printed hides
+    the overflow entirely, which is the silent truncation the cap exists to
+    avoid.
+    """
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    body = "\n".join(f"match {n}" for n in range(50))
+    _write_guide(tmp_path, f"# Guide\n\n## 1 One\n\n{body}\n")
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["guide", "python", "--grep", "match"])
+
+    assert result.exit_code == 0
+    printed = [x for x in result.stdout.splitlines() if x.startswith("    ")]
+    assert len(printed) == 40
+    assert "and 10 more" in result.stderr
