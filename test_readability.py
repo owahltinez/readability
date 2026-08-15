@@ -1,5 +1,6 @@
 import logging
 import os
+import subprocess
 import tomllib
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -1830,3 +1831,74 @@ def test_every_runner_pins_a_version(tmp_path: Path) -> None:
     for binary, runner in TOOL_RUNNERS.items():
         spec = runner[-1]
         assert "<" in spec or "@" in spec, f"{binary} is unpinned: {spec}"
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_a_tool_that_cannot_launch_is_not_counted_as_having_run(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """Resolving a tool is not the same as a process completing.
+
+    A venv whose interpreter has moved leaves an executable script that
+    fails at exec. That was logged and then counted among the tools that
+    ran, so check reported a clean pass naming a tool which never started.
+    """
+    mock_which.side_effect = lambda x: x if x == "ruff" else None
+    mock_run.side_effect = OSError(2, "No such file or directory")
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("script.py").touch()
+
+        result = runner.invoke(cli, ["check", "script.py"])
+
+    assert result.exit_code != 0
+    output = (result.stdout + result.stderr).lower()
+    assert "no findings" not in output
+    assert "ruff" in output
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_a_tool_that_times_out_is_a_failure_not_a_pass(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """A tool killed at the timeout verified nothing."""
+    mock_which.side_effect = lambda x: x if x == "ruff" else None
+    mock_run.side_effect = subprocess.TimeoutExpired("ruff", 60)
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("script.py").touch()
+
+        result = runner.invoke(cli, ["check", "script.py"])
+
+    assert result.exit_code != 0
+    assert "no findings" not in (result.stdout + result.stderr).lower()
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_fix_still_reports_what_it_could_not_fix(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """A fixer exits non-zero when findings remain, which is not a failure.
+
+    Treating that as one aborted the run before the check that reports what
+    is left, so --fix exited 0 claiming clean while the plain check exited 1
+    on the very same files.
+    """
+    mock_which.side_effect = lambda x: x if x == "ruff" else None
+    mock_run.return_value = MagicMock(returncode=1, stdout="E999", stderr="")
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("script.py").touch()
+
+        result = runner.invoke(cli, ["check", "--fix", "script.py"])
+
+    # The reporting check runs after the fixers, so findings still surface
+    commands = [call.args[0] for call in mock_run.call_args_list]
+    assert any("--fix" not in c and "check" in c for c in commands)
+    assert result.exit_code != 0

@@ -1113,6 +1113,16 @@ def check(paths: Sequence[str], fix: bool, verbose: bool) -> None:
             err=True,
         )
 
+    # A tool that could not start or outlived the timeout checked nothing,
+    # so its silence is not a pass however far the rest of the run got
+    if report.failed:
+        click.echo(
+            f"Error: Could not run: {', '.join(sorted(report.failed))}. "
+            "Their findings, if any, are unknown.",
+            err=True,
+        )
+        sys.exit(1)
+
     # Having run nothing is not a pass. Reporting it as one is how this
     # command became a silent no-op wherever its tools were absent, gating
     # nothing while every caller read the exit code as approval.
@@ -1152,15 +1162,21 @@ class CheckReport:
 
     Attributes:
         findings: Whether any tool that ran reported something.
-        ran: Names of the tools that were applicable and present.
+        ran: Names of the tools that completed at least one process. This
+            records what happened, not what was intended: a tool that
+            resolved but never started belongs in failed, or a check that
+            verified nothing reports itself as clean.
         skipped: Names of the tools that were applicable but not installed.
             Tools with no trigger file are in neither set: they were never
             wanted, so passing without them is not a gap in coverage.
+        failed: Names of the tools that started and could not finish, by
+            failing to exec or by running past the timeout.
     """
 
     findings: bool = False
     ran: set[str] = dataclasses.field(default_factory=set)
     skipped: set[str] = dataclasses.field(default_factory=set)
+    failed: set[str] = dataclasses.field(default_factory=set)
 
     def absorb(self, other: "CheckReport") -> None:
         """Fold another report into this one.
@@ -1171,6 +1187,7 @@ class CheckReport:
         self.findings |= other.findings
         self.ran |= other.ran
         self.skipped |= other.skipped
+        self.failed |= other.failed
 
 
 def _check_path(
@@ -1201,8 +1218,7 @@ def _check_path(
             report.skipped.add(name)
             continue
 
-        report.ran.add(name)
-        report.findings |= _run_tool(name, tool, fix=fix)
+        report.absorb(_run_tool(name, tool, fix=fix))
 
     return report
 
@@ -1542,7 +1558,7 @@ def _run_tool(
     tool_name: str,
     tool_config: dict[str, Any],
     fix: bool = False,
-) -> bool:
+) -> CheckReport:
     """Orchestrate the execution of a specific formatting or linting tool.
 
     Args:
@@ -1551,66 +1567,77 @@ def _run_tool(
         fix: Whether to apply automatic fixes.
 
     Returns:
-        True if the tool reported findings, False otherwise.
+        What the tool did: whether it reported findings, and whether it
+        completed at all. A tool that could not be started or ran past the
+        timeout verified nothing, and saying so is the difference between a
+        pass and a command that only looks like one.
     """
     logger.info("Running %s...", tool_name)
-    found_issues = False
+
+    report = CheckReport()
     try:
         if fix:
-            # 1. Run formatters (if available) - these are expected to
-            # modify files
-            if "format" in tool_config:
-                _execute_tool_command(tool_config["format"])
-
-            # 2. Run fixers (if available) - these apply automatic linting fixes
-            if "fix" in tool_config:
-                _execute_tool_command(tool_config["fix"])
-        # 1. Run check_format (if available) - check-only
+            # Formatters rewrite files, fixers apply what they can. Both
+            # exit non-zero when something is left over, which is a finding
+            # rather than a failure, so the check below still gets to run
+            # and report what they could not deal with.
+            for phase in ("format", "fix"):
+                if phase in tool_config:
+                    _execute_tool_command(tool_config[phase])
+                    report.ran.add(tool_name)
         elif "check_format" in tool_config:
-            logger.debug("Executing: %s", " ".join(tool_config["check_format"]))
-            result = subprocess.run(
-                tool_config["check_format"],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=DEFAULT_TIMEOUT,
-            )
+            result = _capture_tool_command(tool_config["check_format"])
+            report.ran.add(tool_name)
+            # gofmt reports by naming files rather than by exit code
             if result.returncode != 0 or (
                 tool_name == "go fmt" and result.stdout.strip()
             ):
-                found_issues = True
+                report.findings = True
                 click.echo(
                     f"--- {tool_name} formatting findings ---\n"
                     f"{result.stdout}\n{result.stderr}"
                 )
 
-        # 3. Run checks and report findings - these provide feedback to the user
         if "check" in tool_config:
-            logger.debug("Executing: %s", " ".join(tool_config["check"]))
-            result = subprocess.run(
-                tool_config["check"],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=DEFAULT_TIMEOUT,
-            )
+            result = _capture_tool_command(tool_config["check"])
+            report.ran.add(tool_name)
             if result.returncode != 0:
-                found_issues = True
+                report.findings = True
                 click.echo(
                     f"--- {tool_name} findings ---\n"
                     f"{result.stdout}\n{result.stderr}"
                 )
 
-    except subprocess.CalledProcessError as e:
-        logger.warning("%s failed with exit code %d", tool_name, e.returncode)
-        if e.stdout:
-            logger.debug("STDOUT: %s", e.stdout)
-        if e.stderr:
-            logger.debug("STDERR: %s", e.stderr)
+    # Failing to start, or running past the timeout, means this tool checked
+    # nothing. Whatever it managed before that stays in ran.
     except (subprocess.SubprocessError, OSError) as e:
-        logger.warning("Unexpected error while running %s: %s", tool_name, e)
+        logger.warning("Could not run %s: %s", tool_name, e)
+        report.failed.add(tool_name)
 
-    return found_issues
+    return report
+
+
+def _capture_tool_command(cmd: list[str]) -> subprocess.CompletedProcess:
+    """Run a tool and capture what it said, whatever its exit code.
+
+    Args:
+        cmd: The command list to execute.
+
+    Returns:
+        The completed process, for the caller to read an exit code off.
+
+    Raises:
+        subprocess.SubprocessError: If the command outlives the timeout.
+        OSError: If the command cannot be started.
+    """
+    logger.debug("Executing: %s", " ".join(cmd))
+    return subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=DEFAULT_TIMEOUT,
+    )
 
 
 def _execute_tool_command(cmd: list[str]) -> None:
@@ -1620,12 +1647,15 @@ def _execute_tool_command(cmd: list[str]) -> None:
         cmd: The command list to execute.
 
     Raises:
-        subprocess.CalledProcessError: If the command returns a non-zero
-            exit code.
+        subprocess.SubprocessError: If the command outlives the timeout.
+        OSError: If the command cannot be started.
     """
     logger.debug("Executing: %s", " ".join(cmd))
+    # check=False: a fixer exits non-zero when findings are left over, and
+    # treating that as an error aborted the run before the check that
+    # reports them, so --fix passed on files the plain check failed.
     subprocess.run(
-        cmd, capture_output=True, check=True, timeout=DEFAULT_TIMEOUT
+        cmd, capture_output=True, check=False, timeout=DEFAULT_TIMEOUT
     )
 
 
