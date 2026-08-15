@@ -80,17 +80,35 @@ readability check . --fix
 
 ### Supported Tools
 
-| Tool | Supported Extensions | Trigger Files |
-|------|----------------------|---------------|
-| **Ruff** | `.py` | `pyproject.toml`, `ruff.toml`, `.ruff.toml` |
-| **Pyrefly** | `.py` | `pyproject.toml`, `pyrefly.toml` |
-| **Biome** | `.js`, `.ts`, `.jsx`, `.tsx`, `.json`, `.jsonc`, `.css`, `.html` | `biome.json`, `biome.jsonc` |
-| **Prettier** | `.js`, `.ts`, `.jsx`, `.tsx`, `.json`, `.css`, `.scss`, `.html`, `.md`, `.yml`, `.yaml` | `.prettierrc*`, `prettier.config.*` |
+| Tool | Supported Extensions | Required Before It Runs |
+|------|----------------------|-------------------------|
+| **Ruff** | `.py` | nothing — installed with this package, bundled config |
+| **Pyrefly** | `.py` | nothing — installed with this package, bundled config |
+| **Biome** | `.js`, `.ts`, `.jsx`, `.tsx`, `.json`, `.jsonc`, `.css`, `.html` | `biome.json` or `biome.jsonc` in the project root |
+| **Prettier** | `.js`, `.ts`, `.jsx`, `.tsx`, `.json`, `.css`, `.scss`, `.html`, `.md`, `.yml`, `.yaml` | `.prettierrc*` or `prettier.config.*` |
 | **gofmt** | `.go` | `go.mod` |
 
-The command will only run a tool if its trigger file exists in the current
-working directory and the tool is available in your `PATH`. For `biome` and
-`prettier`, it attempts to run them via `npx`.
+Ruff and Pyrefly are dependencies of this package and ship with bundled
+configurations, so they run on any file they handle without the project
+arranging anything. Biome, Prettier and gofmt bring no defaults here, so they
+wait until the project asks for them with a config file, and are run through
+`npx` where applicable.
+
+A tool that is wanted but not installed is never skipped quietly:
+
+```bash
+# Some tools ran, so the result stands, but coverage was partial
+$ readability check src/
+Warning: not installed, so not run: prettier.
+No findings in 1 path(s) (ruff, pyrefly).
+
+# Nothing ran, so there is no result to report
+$ readability check src/
+Error: Every tool for 1 path(s) is missing, so nothing was verified.
+```
+
+`check` exits non-zero on findings and on having verified nothing, so it can
+gate CI without a clean exit ever meaning "the tools were absent".
 
 ### Default Configurations
 
