@@ -1182,8 +1182,14 @@ def _should_run_tool(
     Returns:
         True if the tool should run, False otherwise.
     """
-    # Check if any trigger files (like pyproject.toml) exist in the project root
-    has_trigger = any((project_root / t).exists() for t in tool["trigger"])
+    # A tool shipping bundled defaults needs nothing from the project, so
+    # requiring a config file made those defaults unreachable by exactly the
+    # projects they exist for: an empty pyproject.toml was the difference
+    # between checking a file and checking nothing. Tools without defaults
+    # still wait to be asked, since there is no sane way to run them.
+    has_trigger = _bundled_config(tool["name"]).exists() or any(
+        (project_root / t).exists() for t in tool["trigger"]
+    )
 
     # For files, also check if the extension matches one of the supported ones
     if path.is_file():

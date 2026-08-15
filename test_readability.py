@@ -379,44 +379,6 @@ def test_check_command_directory(
 
 @patch("shutil.which")
 @patch("subprocess.run")
-def test_check_command_no_trigger(
-    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
-) -> None:
-    """Tests the check command when trigger files are missing.
-
-    Args:
-        mock_run: The mocked subprocess.run function.
-        mock_which: The mocked shutil.which function.
-        tmp_path: The temporary directory fixture.
-    """
-    # No pyproject.toml created
-    py_file = tmp_path / "script.py"
-    py_file.touch()
-
-    # Mock shutil.which to say ruff exists
-    mock_which.side_effect = lambda x: x if x == "ruff" else None
-
-    # Mock subprocess.run to return success
-    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
-
-    runner = CliRunner()
-    with runner.isolated_filesystem(temp_dir=tmp_path):
-        Path("script.py").touch()
-
-        # Run check on a file without its trigger (pyproject.toml)
-        result = runner.invoke(cli, ["check", "script.py"])
-
-    assert result.exit_code == 0
-    # Ruff should NOT be called because trigger is missing
-    assert mock_run.call_count == 0
-    # Nothing ran, so this cannot be reported as a clean result
-    output = (result.stdout + result.stderr).lower()
-    assert "no findings" not in output
-    assert "nothing was checked" in output
-
-
-@patch("shutil.which")
-@patch("subprocess.run")
 def test_check_command_biome(
     mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
 ) -> None:
@@ -1552,3 +1514,71 @@ def test_check_does_not_report_inapplicable_tools(
     # No biome.json or .prettierrc here, so neither is a skipped tool
     assert "biome" not in output
     assert "prettier" not in output
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_check_runs_bundled_default_tools_without_a_trigger(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """Bundled defaults exist so a project needs no config of its own.
+
+    Gating ruff on a config file made those defaults unreachable by the
+    projects that most needed them: an empty pyproject.toml was the whole
+    difference between checking a file and checking nothing.
+    """
+    mock_which.side_effect = lambda x: x if x in ("ruff", "pyrefly") else None
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("script.py").touch()
+
+        result = runner.invoke(cli, ["check", "script.py"])
+
+    assert result.exit_code == 0
+    assert "nothing was checked" not in (result.stdout + result.stderr)
+    called = [call.args[0][0] for call in mock_run.call_args_list]
+    assert "ruff" in called
+    assert "pyrefly" in called
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_check_still_gates_tools_without_bundled_defaults(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """Biome and Prettier have no defaults here, so a project must ask."""
+    mock_which.side_effect = lambda x: x
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("script.ts").touch()
+
+        result = runner.invoke(cli, ["check", "script.ts"])
+
+    assert result.exit_code == 0
+    called = [call.args[0][0] for call in mock_run.call_args_list]
+    assert "npx" not in called
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_check_without_defaults_respects_its_trigger(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """With biome.json present, biome runs as it always did."""
+    mock_which.side_effect = lambda x: x
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("biome.json").touch()
+        Path("script.ts").touch()
+
+        result = runner.invoke(cli, ["check", "script.ts"])
+
+    assert result.exit_code == 0
+    called = [call.args[0][0] for call in mock_run.call_args_list]
+    assert "npx" in called
