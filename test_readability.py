@@ -1288,3 +1288,74 @@ def test_check_reports_that_it_found_nothing(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     assert "no findings" in (result.stdout + result.stderr).lower()
+
+
+def test_outline_annotates_only_the_expensive_sections(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A size on every line is noise; 59% of sections would read '0'."""
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    big = " ".join(["word"] * 1500)
+    _write_guide(
+        tmp_path,
+        f"# Guide\n\n## 1 Small\n\nShort.\n\n### 1.1 Detail\n\nD.\n\n"
+        f"## 2 Large\n\n{big}\n",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["guide", "python"])
+
+    assert result.exit_code == 0
+    assert "2  Large  (1.5k words)" in result.stdout
+    # The small section carries no annotation at all
+    assert "1  Small\n" in result.stdout
+
+
+def test_outline_size_counts_nested_subsections(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The number is what you would receive, so it includes children."""
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    half = " ".join(["word"] * 800)
+    _write_guide(
+        tmp_path,
+        f"# Guide\n\n## 1 Parent\n\n{half}\n\n### 1.1 Child\n\n{half}\n",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["guide", "python"])
+
+    assert result.exit_code == 0
+    assert "1  Parent  (1.6k words)" in result.stdout
+
+
+def test_outline_hint_names_a_reference_that_resolves(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The outline must not be a dead end, and the example must be usable."""
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    _write_guide(tmp_path, NUMBERED_GUIDE)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["guide", "python"])
+
+    assert result.exit_code == 0
+    # The hint is a diagnostic, so it never contaminates a piped outline
+    assert "sections" in result.stderr
+    assert "readability guide python" in result.stderr
+
+    example = result.stderr.rsplit("readability guide python", 1)[1].strip()
+    followed = runner.invoke(cli, ["guide", "python", example])
+    assert followed.exit_code == 0, f"{example!r} did not resolve"
+
+
+def test_section_and_full_print_no_hint(tmp_path: Path, monkeypatch) -> None:
+    """The hint answers 'what now' after an outline, and only then."""
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    _write_guide(tmp_path, NUMBERED_GUIDE)
+
+    runner = CliRunner()
+    for argv in (["guide", "python", "2.2"], ["guide", "python", "--full"]):
+        result = runner.invoke(cli, argv)
+        assert result.exit_code == 0
+        assert "sections" not in result.stderr

@@ -447,7 +447,33 @@ def _slugify(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
 
 
-def format_outline(headings: Sequence[Heading]) -> str:
+# Sections this long are worth warning about before one is fetched. Measured
+# over the shipped corpus, it marks the 4% that are expensive while leaving
+# the rest unannotated: a size on every line would read '0' on 59% of them,
+# which is noise in the one output whose job is to be scanned quickly.
+LARGE_SECTION_WORDS = 1200
+
+
+def _format_size(words: int) -> str:
+    """Describe a section's length, or nothing if it is unremarkable.
+
+    Words rather than bytes or lines: lines mislead, because code blocks are
+    line-dense and information-sparse, and bytes need dividing by four before
+    they mean anything. Words are exact, need no tokenizer, and both a reader
+    and an agent can convert them.
+
+    Args:
+        words: Number of words in the section, including its subsections.
+
+    Returns:
+        An annotation such as '  (1.6k words)', or an empty string.
+    """
+    if words < LARGE_SECTION_WORDS:
+        return ""
+    return f"  ({words / 1000:.1f}k words)"
+
+
+def format_outline(headings: Sequence[Heading], content: str = "") -> str:
     """Render a heading tree, one heading per line.
 
     The tree is never trimmed. Every shipped guide outlines in under 6 KB
@@ -456,24 +482,34 @@ def format_outline(headings: Sequence[Heading]) -> str:
 
     Args:
         headings: The headings of a guide, in document order.
+        content: The guide's Markdown, used to size each section. Sizes are
+            left off when it is empty.
 
     Returns:
         The outline as text: indentation for depth, the index to pass as REF,
         then the heading's own text verbatim so a rule can be cited exactly
-        as the guide writes it.
+        as the guide writes it. Sections long enough to be worth knowing
+        about before fetching carry their length.
     """
     if not headings:
         return ""
 
     top_level = min(heading.level for heading in headings)
     lines = []
-    for heading in headings:
+    for position, heading in enumerate(headings):
         # The document title roots the tree and has no index to print
         indent = "  " * (heading.level - top_level)
         prefix = f"{heading.index}  " if heading.index else ""
+
+        # The title's 'section' is the whole guide, which --full already covers
+        size = ""
+        if content and heading.index:
+            section = extract_section(content, headings, position)
+            size = _format_size(len(section.split()))
+
         # The index already carries the guide's own number where it has one,
         # so printing the heading verbatim would show it twice.
-        lines.append(f"{indent}{prefix}{heading.title}")
+        lines.append(f"{indent}{prefix}{heading.title}{size}")
 
     return "\n".join(lines)
 
@@ -671,6 +707,52 @@ def _unique_reference(headings: Sequence[Heading], position: int) -> str:
 MAX_REPORTED_MATCHES = 15
 
 
+def _example_reference(headings: Sequence[Heading]) -> str:
+    """Pick a reference from a guide to show the caller what one looks like.
+
+    The deepest heading is chosen because its index demonstrates the dotted
+    form, which is the part a caller is least likely to guess.
+
+    Args:
+        headings: The headings of a guide, in document order.
+
+    Returns:
+        A real index from the guide, or an empty string if it has none.
+    """
+    addressable = [heading for heading in headings if heading.index]
+    if not addressable:
+        return ""
+    return max(addressable, key=lambda heading: heading.level).index
+
+
+def _echo_outline(content: str, language: str) -> None:
+    """Print a guide's outline, and how to act on it.
+
+    The outline is what a bare invocation prints, so a caller arrives here
+    having read nothing, and the index column is the only thing on screen
+    that needs explaining. One line on stderr costs a pipeline nothing and
+    saves that caller a trip through --help.
+
+    Args:
+        content: The full Markdown text of the guide.
+        language: The language whose guide is being read.
+    """
+    headings = parse_headings(content)
+    click.echo(format_outline(headings, content))
+
+    example = _example_reference(headings)
+    if example:
+        count = sum(1 for heading in headings if heading.index)
+        # stdout is block-buffered when redirected, so without this the hint
+        # lands above the outline it is meant to follow
+        sys.stdout.flush()
+        click.echo(
+            f"# {count} sections · print one:  "
+            f"readability guide {language} {example}",
+            err=True,
+        )
+
+
 def _select_section(content: str, reference: str, language: str) -> str:
     """Resolve a section reference against a guide and extract that section.
 
@@ -777,7 +859,7 @@ def guide(
         elif reference:
             click.echo(_select_section(content, reference, language))
         else:
-            click.echo(format_outline(parse_headings(content)))
+            _echo_outline(content, language)
 
     except (click.ClickException, click.UsageError) as e:
         logger.error("Execution failed: %s", e)
