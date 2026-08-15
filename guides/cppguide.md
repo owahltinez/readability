@@ -415,7 +415,7 @@ brackets:
   and `<string>`).
 * POSIX, Linux, and Windows system headers (e.g., `<unistd.h>`
   and `<windows.h>`).
-* In rare cases, third\_party libraries (e.g., `<Python.h>`).
+* In rare cases, third_party libraries (e.g., `<Python.h>`).
 
 In `dir/foo.cc` or
 `dir/foo_test.cc`, whose main
@@ -1005,7 +1005,7 @@ Dynamic initialization of static local variables is allowed (and common).
   it by using a function-local static pointer or reference (e.g.,
   `static const auto& impl = *new T(args...);`).
 
-### thread\_local Variables
+### thread_local Variables
 
 `thread_local` variables that aren't declared inside a function
 must be initialized with a true compile-time constant,
@@ -3989,7 +3989,7 @@ the rules are the rules.
 For the purposes of the naming rules below, a "word" is anything that you
 would write in English without internal spaces. Either words are all lowercase,
 with underscores between words
-("[snake\_case](https://en.wikipedia.org/wiki/Snake_case)"), or words
+("[snake_case](https://en.wikipedia.org/wiki/Snake_case)"), or words
 are mixed case with the first letter of each word capitalized
 ("[camelCase](https://en.wikipedia.org/wiki/Camel_case)" or
 "[PascalCase](https://en.wiktionary.org/wiki/Pascal_case)").

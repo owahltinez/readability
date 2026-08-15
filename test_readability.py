@@ -78,6 +78,15 @@ def test_convert_to_markdown_html() -> None:
     assert "# Header" in result
 
 
+def test_convert_to_markdown_keeps_underscores() -> None:
+    """Tests that identifiers survive conversion without escapes."""
+    content = "<h3>thread_local Variables</h3><p>from __future__ import</p>"
+    result = convert_to_markdown(content, "guide.html")
+    assert "thread_local" in result
+    assert "from __future__ import" in result
+    assert "\\_" not in result
+
+
 def test_convert_to_markdown_xml() -> None:
     """Tests conversion for XML files."""
     content = "<guide><title>Vim</title></guide>"

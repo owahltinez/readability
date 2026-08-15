@@ -110,8 +110,8 @@ There are four variants of import statements in ES6 and TypeScript:
 
 | Import type | Example | Use for |
 | --- | --- | --- |
-| module[module\_import] | `import * as foo from '...';` | TypeScript imports |
-| named[destructuring\_import] | `import {SomeThing} from '...';` | TypeScript imports |
+| module[module_import] | `import * as foo from '...';` | TypeScript imports |
+| named[destructuring_import] | `import {SomeThing} from '...';` | TypeScript imports |
 | default | `import SomeThing from '...';` | Only for other external code that requires them |
 | side-effect | `import '...';` | Only to import libraries for their side-effects on load (such as custom elements) |
 

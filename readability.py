@@ -68,6 +68,12 @@ LANGUAGE_MAP = {
 
 BASE_URL = "https://google.github.io/styleguide/"
 
+# Style guides are dense with snake_case and dunder identifiers, and escaping
+# their underscores leaves 'from \_\_future\_\_ import' in the text a caller
+# greps or reads. CommonMark would render a bare '__future__' as emphasis, but
+# these guides are consumed as plain text, where fidelity matters more.
+MARKDOWNIFY_OPTIONS = {"heading_style": "ATX", "escape_underscores": False}
+
 
 def get_guide_content(url: str) -> str:
     """Fetch raw content from the specified URL.
@@ -167,11 +173,11 @@ def convert_to_markdown(content: str, filename: str) -> str:
             snippet.append(code)
 
         # Convert the modified soup to string and then to markdown
-        return md(str(soup), heading_style="ATX")
+        return md(str(soup), **MARKDOWNIFY_OPTIONS)
 
     # Handle HTML files by converting them to Markdown
     if filename.endswith(".html"):
-        return md(content, heading_style="ATX")
+        return md(content, **MARKDOWNIFY_OPTIONS)
 
     # Fallback to returning raw content
     return content
