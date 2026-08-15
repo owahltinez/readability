@@ -1096,14 +1096,7 @@ def check(paths: Sequence[str], fix: bool, verbose: bool) -> None:
     if verbose:
         logger.setLevel(logging.DEBUG)
 
-    # Resolve project root once for trigger file checking
-    project_root = Path.cwd()
-
-    # Process each provided path independently, tracking findings across
-    # all of them so the exit code reflects the overall result
-    report = CheckReport()
-    for path_str in paths:
-        report.absorb(_check_path(Path(path_str), project_root, fix=fix))
+    report = check_paths(paths, fix=fix)
 
     # Coverage the caller does not know is missing reads as coverage
     if report.skipped:
@@ -1188,6 +1181,34 @@ class CheckReport:
         self.ran |= other.ran
         self.skipped |= other.skipped
         self.failed |= other.failed
+
+
+def check_paths(
+    paths: Sequence[str | Path],
+    project_root: Path | None = None,
+    fix: bool = False,
+) -> CheckReport:
+    """Run relevant checks for paths and aggregate what the tools did.
+
+    Detailed findings from the underlying tools are written as they are for
+    the command-line interface. This function does not print CLI status prose
+    or turn the report into a process exit code; callers decide how to handle
+    the result.
+
+    Args:
+        paths: Files or directories to check, as strings or paths.
+        project_root: Root used to discover tool configuration. Defaults to
+            the current working directory.
+        fix: Whether to apply automatic fixes.
+
+    Returns:
+        A report aggregated across all provided paths.
+    """
+    root = Path.cwd() if project_root is None else project_root
+    report = CheckReport()
+    for path in paths:
+        report.absorb(_check_path(Path(path), root, fix=fix))
+    return report
 
 
 def _check_path(

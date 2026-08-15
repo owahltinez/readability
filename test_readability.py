@@ -3,7 +3,7 @@ import os
 import subprocess
 import tomllib
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import click
 import pytest
@@ -13,11 +13,13 @@ from click.testing import CliRunner
 from readability import (
     LANGUAGE_MAP,
     TOOL_RUNNERS,
+    CheckReport,
     _bundled_config,
     _get_tool_definitions,
     _has_project_config,
     _iter_heading_lines,
     _unique_reference,
+    check_paths,
     cli,
     convert_to_markdown,
     extract_section,
@@ -516,6 +518,104 @@ def test_bundled_default_configs_are_valid(tmp_path: Path) -> None:
     ruff_config = tomllib.loads(_bundled_config("ruff").read_text())
     assert ruff_config["line-length"] == 80
     assert ruff_config["lint"]["pydocstyle"]["convention"] == "google"
+
+
+@patch("readability._check_path")
+def test_check_paths_aggregates_str_and_path_inputs(
+    mock_check_path: MagicMock, tmp_path: Path
+) -> None:
+    """The public API folds each per-path result into one limited report."""
+    project_root = tmp_path / "project"
+    mock_check_path.side_effect = [
+        CheckReport(ran={"ruff"}, skipped={"pyrefly"}),
+        CheckReport(
+            findings=True,
+            ran={"prettier"},
+            failed={"biome"},
+        ),
+    ]
+
+    report = check_paths(
+        ["src/example.py", Path("README.md")],
+        project_root=project_root,
+        fix=True,
+    )
+
+    assert report == CheckReport(
+        findings=True,
+        ran={"ruff", "prettier"},
+        skipped={"pyrefly"},
+        failed={"biome"},
+    )
+    assert mock_check_path.call_args_list == [
+        call(Path("src/example.py"), project_root, fix=True),
+        call(Path("README.md"), project_root, fix=True),
+    ]
+
+
+@patch("readability._check_path", return_value=CheckReport(ran={"ruff"}))
+def test_check_paths_defaults_project_root_to_cwd(
+    mock_check_path: MagicMock,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The public API discovers configuration from the caller's directory."""
+    monkeypatch.chdir(tmp_path)
+
+    check_paths([Path("example.py")])
+
+    mock_check_path.assert_called_once_with(
+        Path("example.py"), tmp_path, fix=False
+    )
+
+
+@patch("readability._check_path")
+def test_check_paths_with_no_paths_reports_that_nothing_ran(
+    mock_check_path: MagicMock,
+) -> None:
+    """An empty request must not look like a verified clean result."""
+    report = check_paths([])
+
+    assert report == CheckReport()
+    assert not report.ran
+    mock_check_path.assert_not_called()
+
+
+@patch(
+    "readability._check_path",
+    return_value=CheckReport(
+        findings=True,
+        skipped={"pyrefly"},
+        failed={"ruff"},
+    ),
+)
+def test_check_paths_returns_report_without_cli_status_prose(
+    mock_check_path: MagicMock, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Library callers receive report states without CLI policy or summaries."""
+    report = check_paths(["example.py"])
+
+    assert report.findings is True
+    assert report.skipped == {"pyrefly"}
+    assert report.failed == {"ruff"}
+    assert capsys.readouterr() == ("", "")
+    mock_check_path.assert_called_once()
+
+
+@patch("readability.check_paths", return_value=CheckReport(ran={"ruff"}))
+def test_check_command_delegates_to_public_api(
+    mock_check_paths: MagicMock, tmp_path: Path
+) -> None:
+    """The CLI keeps its output policy while delegating check execution."""
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("script.py").touch()
+        result = runner.invoke(cli, ["check", "script.py"])
+
+    mock_check_paths.assert_called_once_with(("script.py",), fix=False)
+    assert result.exit_code == 0
+    assert result.stdout == ""
+    assert result.stderr == "No findings in 1 path(s) (ruff).\n"
 
 
 @patch("shutil.which")
