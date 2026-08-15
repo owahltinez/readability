@@ -29,3 +29,12 @@ jobs:
 
       - name: Run tests
         run: uv run pytest
+
+      # Runs the tool against itself, which is the only place tool
+      # resolution is exercised for real: the unit tests reach it with
+      # shutil.which mocked, so they cannot tell whether a resolved command
+      # actually starts. ruff comes from the synced environment and pyrefly
+      # is not a dependency at all, so this covers both the PATH branch and
+      # the uvx runner, on a machine that has neither installed.
+      - name: Check this repository with the tool itself
+        run: uv run readability check .
