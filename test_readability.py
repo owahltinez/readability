@@ -177,8 +177,8 @@ def test_sync_command(
         assert len(os.listdir(tmp_path)) > 0
 
 
-def test_languages_command() -> None:
-    """Tests the languages command."""
+def test_guide_without_a_language_lists_them() -> None:
+    """Naming no language names no guide, so the answer is which exist."""
     runner = CliRunner()
     result = runner.invoke(cli, ["guide"])
     assert result.exit_code == 0
@@ -189,8 +189,8 @@ def test_languages_command() -> None:
     assert "c#, csharp" in result.output
 
 
-def test_languages_command_with_cache(tmp_path: Path) -> None:
-    """Tests the languages command shows [cached] label correctly.
+def test_guide_language_list_marks_the_cached_ones(tmp_path: Path) -> None:
+    """Tests that the language list shows [cached] correctly.
 
     Args:
         tmp_path: The temporary directory fixture.
@@ -1399,3 +1399,83 @@ def test_sync_rejects_an_unsupported_language(tmp_path: Path) -> None:
 
     assert result.exit_code != 0
     assert "not supported" in result.output
+
+
+def test_grep_reports_the_owning_section(tmp_path: Path, monkeypatch) -> None:
+    """A line number in a 3700-line stream does not say which rule it is."""
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    _write_guide(tmp_path, NUMBERED_GUIDE)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["guide", "python", "--grep", "full package"])
+
+    assert result.exit_code == 0
+    # The section reference is the point: it is what the next call needs,
+    # and the path with it says which of 19 'Decision' headings this is
+    assert "2.2.4  Language Rules > Imports > Decision" in result.stdout
+    assert "Use full package paths." in result.stdout
+
+
+def test_grep_reference_is_usable(tmp_path: Path, monkeypatch) -> None:
+    """Whatever grep prints as a reference must resolve on its own."""
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    _write_guide(tmp_path, NUMBERED_GUIDE)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["guide", "python", "--grep", "full package"])
+
+    reference = result.stdout.splitlines()[0].split("  ")[0].strip()
+    followed = runner.invoke(cli, ["guide", "python", reference])
+    assert followed.exit_code == 0, f"{reference!r} did not resolve"
+
+
+def test_grep_is_case_insensitive_and_takes_a_pattern(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Searching prose should not require matching its capitalisation."""
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    _write_guide(tmp_path, NUMBERED_GUIDE)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["guide", "python", "--grep", "FULL PACK.ge"])
+
+    assert result.exit_code == 0
+    assert "Use full package paths." in result.stdout
+
+
+def test_grep_without_matches_exits_nonzero(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Grep's contract is that no matches is a failure, so scripts can gate."""
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    _write_guide(tmp_path, NUMBERED_GUIDE)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["guide", "python", "--grep", "concurrency"])
+
+    assert result.exit_code == 1
+    assert result.stdout == ""
+    assert "no line" in result.stderr.lower()
+
+
+def test_grep_rejects_an_invalid_pattern(tmp_path: Path, monkeypatch) -> None:
+    """A broken regex is a typo to report, not a traceback."""
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    _write_guide(tmp_path, NUMBERED_GUIDE)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["guide", "python", "--grep", "["])
+
+    assert result.exit_code != 0
+    assert "pattern" in result.output.lower()
+
+
+def test_grep_and_a_reference_is_refused(tmp_path: Path, monkeypatch) -> None:
+    """Two ways to select content cannot both win silently."""
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    _write_guide(tmp_path, NUMBERED_GUIDE)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["guide", "python", "2.2", "--grep", "imports"])
+
+    assert result.exit_code != 0

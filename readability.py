@@ -707,6 +707,78 @@ def _unique_reference(headings: Sequence[Heading], position: int) -> str:
 MAX_REPORTED_MATCHES = 15
 
 
+# Beyond this many matching lines a search is the wrong tool for the question
+MAX_REPORTED_LINES = 40
+
+
+def search_guide(
+    content: str, headings: Sequence[Heading], pattern: re.Pattern[str]
+) -> list[tuple[int, list[str]]]:
+    """Find the lines matching a pattern, grouped by the section holding them.
+
+    Args:
+        content: The full Markdown text of the guide.
+        headings: The headings of the guide, in document order.
+        pattern: The compiled pattern to search each line for.
+
+    Returns:
+        Pairs of (heading position, matching lines), in document order. The
+        section is the point: a bare line number says nothing about which
+        rule a match belongs to.
+    """
+    # Walk headings alongside the lines so each match knows what encloses it
+    groups: list[tuple[int, list[str]]] = []
+    position = -1
+    upcoming = list(headings)
+    for number, line in enumerate(content.splitlines()):
+        while upcoming and upcoming[0].line == number:
+            upcoming.pop(0)
+            position += 1
+
+        if not pattern.search(line):
+            continue
+
+        # Matches under one heading collect together rather than repeating it
+        if groups and groups[-1][0] == position:
+            groups[-1][1].append(line.strip())
+        else:
+            groups.append((position, [line.strip()]))
+
+    return groups
+
+
+def _echo_matches(
+    headings: Sequence[Heading],
+    groups: Sequence[tuple[int, list[str]]],
+) -> None:
+    """Print search results as sections, each above the lines that matched.
+
+    Args:
+        headings: The headings of the guide, in document order.
+        groups: Pairs of (heading position, matching lines).
+    """
+    shown = 0
+    for position, lines in groups:
+        if shown >= MAX_REPORTED_LINES:
+            break
+
+        # A match above the first heading has no section to be reported under
+        reference = (
+            _unique_reference(headings, position) if position >= 0 else ""
+        )
+        title = _describe_heading(headings, position) if position >= 0 else ""
+        click.echo(f"{reference}  {title}".strip())
+
+        for line in lines[: MAX_REPORTED_LINES - shown]:
+            click.echo(f"    {line}")
+        shown += len(lines)
+
+    # Truncation the caller is not told about reads as 'that was everything'
+    total = sum(len(lines) for _, lines in groups)
+    if total > shown:
+        click.echo(f"... and {total - shown} more matching lines", err=True)
+
+
 def _example_reference(headings: Sequence[Heading]) -> str:
     """Pick a reference from a guide to show the caller what one looks like.
 
@@ -751,6 +823,39 @@ def _echo_outline(content: str, language: str) -> None:
             f"readability guide {language} {example}",
             err=True,
         )
+
+
+def _echo_search(content: str, pattern: str, language: str) -> None:
+    """Search a guide and print the matches, or fail if there are none.
+
+    Args:
+        content: The full Markdown text of the guide.
+        pattern: The regular expression given on the command line.
+        language: The language whose guide is being searched.
+
+    Raises:
+        click.UsageError: If the pattern is not a valid regular expression.
+        SystemExit: If nothing matches, following grep's convention so that
+            the command can gate a script.
+    """
+    try:
+        # Prose is searched without regard to how the guide capitalises it
+        compiled = re.compile(pattern, re.IGNORECASE)
+    except re.error as e:
+        raise click.UsageError(f"Invalid --grep pattern '{pattern}': {e}")
+
+    headings = parse_headings(content)
+    groups = search_guide(content, headings, compiled)
+
+    if not groups:
+        click.echo(
+            f"Error: Found no line matching '{pattern}' in the "
+            f"'{language}' guide.",
+            err=True,
+        )
+        sys.exit(1)
+
+    _echo_matches(headings, groups)
 
 
 def _select_section(content: str, reference: str, language: str) -> str:
@@ -821,11 +926,18 @@ def cli(ctx: click.Context, verbose: bool) -> None:
     is_flag=True,
     help="Print the whole guide, for grepping rather than reading.",
 )
+@click.option(
+    "--grep",
+    "pattern",
+    metavar="PATTERN",
+    help="Print lines matching PATTERN, under the section holding each.",
+)
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging.")
 def guide(
     language: Optional[str],
     reference: Optional[str],
     full: bool,
+    pattern: Optional[str],
     verbose: bool,
 ) -> None:
     """Read the Google style guide for LANGUAGE.
@@ -846,8 +958,19 @@ def guide(
 
     # Refusing beats picking a winner: a silent precedence rule is how the
     # caller ends up reading the wrong thing without being told.
-    if full and reference:
-        raise click.UsageError("--full takes the whole guide, so REF cannot.")
+    selectors = [
+        name
+        for name, given in (
+            ("REF", reference),
+            ("--full", full),
+            ("--grep", pattern),
+        )
+        if given
+    ]
+    if len(selectors) > 1:
+        raise click.UsageError(
+            f"{' and '.join(selectors)} each select what to print; give one."
+        )
 
     logger.info("Processing style guide for: %s", language)
 
@@ -856,6 +979,8 @@ def guide(
 
         if full:
             click.echo(content)
+        elif pattern:
+            _echo_search(content, pattern, language)
         elif reference:
             click.echo(_select_section(content, reference, language))
         else:
