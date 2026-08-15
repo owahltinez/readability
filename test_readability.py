@@ -522,10 +522,17 @@ def test_bundled_default_configs_are_valid(tmp_path: Path) -> None:
 
 @patch("readability._check_path")
 def test_check_paths_aggregates_str_and_path_inputs(
-    mock_check_path: MagicMock, tmp_path: Path
+    mock_check_path: MagicMock,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The public API folds each per-path result into one limited report."""
     project_root = tmp_path / "project"
+    project_root.mkdir()
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "example.py").touch()
+    (tmp_path / "README.md").touch()
+    monkeypatch.chdir(tmp_path)
     mock_check_path.side_effect = [
         CheckReport(ran={"ruff"}, skipped={"pyrefly"}),
         CheckReport(
@@ -561,6 +568,7 @@ def test_check_paths_defaults_project_root_to_cwd(
 ) -> None:
     """The public API discovers configuration from the caller's directory."""
     monkeypatch.chdir(tmp_path)
+    (tmp_path / "example.py").touch()
 
     check_paths([Path("example.py")])
 
@@ -581,6 +589,23 @@ def test_check_paths_with_no_paths_reports_that_nothing_ran(
     mock_check_path.assert_not_called()
 
 
+@patch("readability._check_path")
+def test_check_paths_rejects_missing_paths_before_dispatch(
+    mock_check_path: MagicMock,
+    tmp_path: Path,
+) -> None:
+    """A missing path prevents partial checks and fixes on earlier paths."""
+    existing = tmp_path / "exists.py"
+    missing = tmp_path / "missing.py"
+    existing.touch()
+
+    with pytest.raises(FileNotFoundError) as excinfo:
+        check_paths([existing, missing], project_root=tmp_path, fix=True)
+
+    assert str(missing) in str(excinfo.value)
+    mock_check_path.assert_not_called()
+
+
 @patch(
     "readability._check_path",
     return_value=CheckReport(
@@ -590,10 +615,15 @@ def test_check_paths_with_no_paths_reports_that_nothing_ran(
     ),
 )
 def test_check_paths_returns_report_without_cli_status_prose(
-    mock_check_path: MagicMock, capsys: pytest.CaptureFixture[str]
+    mock_check_path: MagicMock,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
 ) -> None:
     """Library callers receive report states without CLI policy or summaries."""
-    report = check_paths(["example.py"])
+    path = tmp_path / "example.py"
+    path.touch()
+
+    report = check_paths([path])
 
     assert report.findings is True
     assert report.skipped == {"pyrefly"}

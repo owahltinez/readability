@@ -150,7 +150,10 @@ if report.findings or report.failed or not report.ran:
 
 The returned `CheckReport` records only whether findings occurred and which
 tools ran, were skipped, or failed. Detailed tool findings are still written
-as each tool runs.
+as each tool runs. Every path is validated before any tool runs, and a missing
+one raises `FileNotFoundError` rather than being misreported as a finding.
+Relative paths remain relative to the process working directory;
+`project_root` controls configuration discovery only.
 
 ### Default Configurations
 
