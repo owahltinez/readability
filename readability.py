@@ -1348,15 +1348,21 @@ def _default_config_args(
 # own: vendoring ruff and pyrefly made it thirteen times larger, and charged
 # that to everyone using only `guide`.
 #
-# Versions are pinned to a compatible range. Unpinned, a new release would
-# change a project's findings with nothing in the project having changed.
+# Floors, not ranges. A floor keeps a tool new enough to understand the
+# bundled configs; a ceiling would freeze whoever installed nothing at the
+# version shipped here and demand a release of this package to track every
+# release of theirs. Ruff alone has published seventeen minor series, one
+# roughly every six weeks, and the first ceiling written here was stale two
+# days later. Anyone who needs a fixed version installs it, and an
+# installed tool always wins over a fetched one.
+#
 # The npm package name is not always the executable's: 'biome' on npm is an
 # unrelated environment-variable helper that exits 0 whatever it is given.
 TOOL_RUNNERS = {
-    "ruff": ["uvx", "ruff>=0.15,<0.16"],
-    "pyrefly": ["uvx", "pyrefly>=1.2,<2"],
-    "biome": ["npx", "-y", "@biomejs/biome@^2.5"],
-    "prettier": ["npx", "-y", "prettier@^3.9"],
+    "ruff": ["uvx", "ruff>=0.15"],
+    "pyrefly": ["uvx", "pyrefly>=1.2"],
+    "biome": ["npx", "-y", "@biomejs/biome@>=2.5"],
+    "prettier": ["npx", "-y", "prettier@>=3.9"],
 }
 
 

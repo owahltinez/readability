@@ -99,10 +99,15 @@ carry Ruff and Pyrefly itself — a cost that would fall on everyone using only
 `guide`. An installed copy always wins over a fetched one, so a project that
 pinned a version is linted against the rules it chose.
 
-Fetched versions are pinned to a compatible range, so a new release cannot
-change your findings with nothing in your project having changed. Set
-`UV_OFFLINE=1` to forbid fetching; anything unreachable is then reported as
-missing rather than downloaded.
+Fetched tools carry a minimum version, enough to understand the bundled
+configurations, and no maximum. A ceiling would freeze anyone who installed
+nothing at whatever was current when this package shipped, and tie its
+releases to Ruff's — which has published seventeen minor series, roughly one
+every six weeks. If you need a fixed version, install it: an installed tool
+always wins over a fetched one.
+
+Set `UV_OFFLINE=1` to forbid fetching. A tool that then cannot be reached
+fails the run rather than passing it.
 
 Ruff and Pyrefly ship with bundled configurations, so they run on any file
 they handle without the project arranging anything. Biome, Prettier and gofmt

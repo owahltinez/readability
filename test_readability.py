@@ -412,7 +412,7 @@ def test_check_command_biome(
     assert [
         "npx",
         "-y",
-        "@biomejs/biome@^2.5",
+        "@biomejs/biome@>=2.5",
         "lint",
         "--no-errors-on-unmatched",
         "script.js",
@@ -420,7 +420,7 @@ def test_check_command_biome(
     assert [
         "npx",
         "-y",
-        "@biomejs/biome@^2.5",
+        "@biomejs/biome@>=2.5",
         "format",
         "--no-errors-on-unmatched",
         "script.js",
@@ -1748,13 +1748,12 @@ def test_node_tools_fall_back_to_npx(tmp_path: Path) -> None:
     assert cmd[2].startswith("prettier@")
 
 
-def test_python_tools_fall_back_to_a_pinned_runner(tmp_path: Path) -> None:
+def test_python_tools_fall_back_to_a_floored_runner(tmp_path: Path) -> None:
     """A tool nobody installed is still reachable, and still reproducible.
 
     uvx downloads once and serves every later run from its cache, so the
-    package need not carry 50 MB of binaries to make check work. The version
-    is pinned to a range so a new ruff release cannot change a project's
-    findings underneath it.
+    package need not carry 50 MB of binaries to make check work. A floor
+    keeps what it fetches new enough for the bundled configs.
     """
     with patch("shutil.which", return_value=None):
         tools = {
@@ -1764,7 +1763,6 @@ def test_python_tools_fall_back_to_a_pinned_runner(tmp_path: Path) -> None:
     ruff = tools["ruff"]["check"]
     assert ruff[0] == "uvx"
     assert ruff[1].startswith("ruff>=")
-    assert "<" in ruff[1], f"unpinned upper bound: {ruff[1]}"
 
     pyrefly = tools["pyrefly"]["check"]
     assert pyrefly[0] == "uvx"
@@ -1826,11 +1824,17 @@ def test_resolution_ignores_a_project_virtualenv(tmp_path: Path) -> None:
     assert tools["ruff"]["check"][0] == "uvx"
 
 
-def test_every_runner_pins_a_version(tmp_path: Path) -> None:
-    """An unpinned fetch changes findings with the project unchanged."""
+def test_every_runner_floors_a_version(tmp_path: Path) -> None:
+    """A floor keeps a fetched tool new enough for the bundled configs.
+
+    No ceilings: one would freeze whoever installed nothing at whatever was
+    current when this shipped, and tie a release of this package to every
+    release of theirs. The first ceiling written here was stale in two days.
+    """
     for binary, runner in TOOL_RUNNERS.items():
         spec = runner[-1]
-        assert "<" in spec or "@" in spec, f"{binary} is unpinned: {spec}"
+        assert ">=" in spec, f"{binary} has no floor: {spec}"
+        assert "<" not in spec, f"{binary} has a ceiling: {spec}"
 
 
 @patch("shutil.which")
