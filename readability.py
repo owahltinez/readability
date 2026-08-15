@@ -867,25 +867,59 @@ def guide(
         sys.exit(1)
 
 
+def _resolve_filenames(languages: Sequence[str]) -> list[str]:
+    """Map languages to the guides that back them.
+
+    Args:
+        languages: Language names or aliases, or empty for every guide.
+
+    Returns:
+        The guide filenames, deduplicated because aliases share a guide.
+
+    Raises:
+        click.UsageError: If a language has no guide.
+    """
+    if not languages:
+        return sorted(set(LANGUAGE_MAP.values()))
+
+    filenames = []
+    for language in languages:
+        filename = LANGUAGE_MAP.get(language.lower())
+        if not filename:
+            raise click.UsageError(
+                f"Language '{language}' is not supported. Supported "
+                f"languages: {', '.join(sorted(LANGUAGE_MAP.keys()))}"
+            )
+        # Aliases such as 'cpp' and 'c++' resolve to one guide, which is
+        # fetched once however many of its names were given
+        if filename not in filenames:
+            filenames.append(filename)
+
+    return filenames
+
+
 @cli.command()
+@click.argument("languages", nargs=-1, metavar="[LANGUAGE]...")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging.")
-def sync(verbose: bool) -> None:
-    """Synchronize all supported style guides from the web to local storage."""
+def sync(languages: Sequence[str], verbose: bool) -> None:
+    """Refetch style guides from the web, replacing the local copies.
+
+    With no LANGUAGE every guide is refetched; naming one or more refreshes
+    just those.
+    """
     if verbose:
         logger.setLevel(logging.DEBUG)
 
-    click.echo("Synchronizing all style guides...", err=True)
+    filenames = _resolve_filenames(languages)
+    click.echo(f"Synchronizing {len(filenames)} style guide(s)...", err=True)
 
     if not os.path.exists(get_guides_dir()):
         os.makedirs(get_guides_dir(), exist_ok=True)
 
-    # Get unique filenames to avoid redundant downloads
-    filenames = set(LANGUAGE_MAP.values())
-
     success_count = 0
     failure_count = 0
 
-    for filename in sorted(filenames):
+    for filename in filenames:
         click.echo(f"Syncing {filename}...", err=True)
         try:
             url = f"{BASE_URL}{filename}"

@@ -1359,3 +1359,43 @@ def test_section_and_full_print_no_hint(tmp_path: Path, monkeypatch) -> None:
         result = runner.invoke(cli, argv)
         assert result.exit_code == 0
         assert "sections" not in result.stderr
+
+
+@patch("readability.get_guide_content")
+def test_sync_accepts_languages(
+    mock_get_content: MagicMock, tmp_path: Path
+) -> None:
+    """Refreshing one guide should not mean refetching all fourteen."""
+    mock_get_content.return_value = "# Guide"
+
+    with patch("readability.get_guides_dir", return_value=str(tmp_path)):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["sync", "python", "shell"])
+
+    assert result.exit_code == 0
+    assert sorted(os.listdir(tmp_path)) == ["pyguide.md", "shellguide.md"]
+
+
+@patch("readability.get_guide_content")
+def test_sync_deduplicates_aliases(
+    mock_get_content: MagicMock, tmp_path: Path
+) -> None:
+    """Aliases share one guide, so naming both must not fetch it twice."""
+    mock_get_content.return_value = "# Guide"
+
+    with patch("readability.get_guides_dir", return_value=str(tmp_path)):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["sync", "cpp", "c++"])
+
+    assert result.exit_code == 0
+    assert mock_get_content.call_count == 1
+
+
+def test_sync_rejects_an_unsupported_language(tmp_path: Path) -> None:
+    """An unknown language is a typo, not a reason to sync everything."""
+    with patch("readability.get_guides_dir", return_value=str(tmp_path)):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["sync", "cobol"])
+
+    assert result.exit_code != 0
+    assert "not supported" in result.output
