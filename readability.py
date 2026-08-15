@@ -1326,37 +1326,54 @@ def _default_config_args(
     return ["--config", str(_bundled_config(tool_name))]
 
 
-def _node_tool_command(
-    binary: str, package: str, project_root: Path
-) -> list[str]:
-    """Build the argv prefix that reaches a Node-based tool.
+# How to reach a tool nobody installed. Both runners cache what they fetch,
+# so the download happens once per machine and later runs are served from
+# disk and work offline, which is why this package carries no linters of its
+# own: vendoring ruff and pyrefly made it thirteen times larger, and charged
+# that to everyone using only `guide`.
+#
+# Versions are pinned to a compatible range. Unpinned, a new release would
+# change a project's findings with nothing in the project having changed.
+# The npm package name is not always the executable's: 'biome' on npm is an
+# unrelated environment-variable helper that exits 0 whatever it is given.
+TOOL_RUNNERS = {
+    "ruff": ["uvx", "ruff>=0.15,<0.16"],
+    "pyrefly": ["uvx", "pyrefly>=1.2,<2"],
+    "biome": ["npx", "-y", "@biomejs/biome"],
+    "prettier": ["npx", "-y", "prettier"],
+}
 
-    A project that installed the tool has pinned a version, and running a
-    different one through npx would lint against rules the project did not
-    choose. npx remains the fallback, since it is the only way to reach a
-    tool that is not installed at all.
+
+def _tool_command(binary: str, project_root: Path) -> list[str]:
+    """Build the argv prefix that reaches a tool.
+
+    A project that installed a tool chose that version, and the findings it
+    is used to were written against it, so an installed copy always wins
+    over one a runner would fetch.
 
     Args:
-        binary: The executable's name, as npm installs it.
-        package: The npm package providing it, which is not always the same:
-            'biome' on npm is an unrelated environment-variable helper, and
-            fetching it ran something that exits 0 whatever it is given.
-        project_root: The project root, searched for node_modules.
+        binary: The executable's name.
+        project_root: The project root, searched for local installs.
 
     Returns:
-        The command prefix to put the tool's own arguments after.
+        The command prefix to put the tool's own arguments after. Falls back
+        to the bare name when the tool has no runner, leaving PATH to
+        resolve it as before.
     """
-    # A project-local install is the version the project chose
-    local = project_root / "node_modules" / ".bin" / binary
-    if local.exists():
-        return [str(local)]
+    # What the project installed for itself, whichever ecosystem it came from
+    for local in (
+        project_root / "node_modules" / ".bin" / binary,
+        project_root / ".venv" / "bin" / binary,
+    ):
+        if local.exists():
+            return [str(local)]
 
-    # Then one the user installed themselves, which needs no download
+    # Then whatever the machine already has, which needs no download at all
     found = shutil.which(binary)
     if found:
         return [found]
 
-    return ["npx", "-y", package]
+    return TOOL_RUNNERS.get(binary, [binary])
 
 
 def _get_tool_definitions(
@@ -1382,21 +1399,23 @@ def _get_tool_definitions(
     )
 
     # Resolved once so every command for a tool reaches the same executable
-    biome = _node_tool_command("biome", "@biomejs/biome", project_root)
-    prettier = _node_tool_command("prettier", "prettier", project_root)
+    ruff = _tool_command("ruff", project_root)
+    pyrefly = _tool_command("pyrefly", project_root)
+    biome = _tool_command("biome", project_root)
+    prettier = _tool_command("prettier", project_root)
 
     return [
         {
             "name": "ruff",
             "check": [
-                "ruff",
+                *ruff,
                 "check",
                 "--force-exclude",
                 *ruff_config,
                 path_str,
             ],
             "check_format": [
-                "ruff",
+                *ruff,
                 "format",
                 "--check",
                 "--force-exclude",
@@ -1404,7 +1423,7 @@ def _get_tool_definitions(
                 path_str,
             ],
             "fix": [
-                "ruff",
+                *ruff,
                 "check",
                 "--fix",
                 "--force-exclude",
@@ -1412,7 +1431,7 @@ def _get_tool_definitions(
                 path_str,
             ],
             "format": [
-                "ruff",
+                *ruff,
                 "format",
                 "--force-exclude",
                 *ruff_config,
@@ -1424,7 +1443,7 @@ def _get_tool_definitions(
         {
             # Type checker only: it reports findings but cannot fix or format
             "name": "pyrefly",
-            "check": ["pyrefly", "check", *pyrefly_config, path_str],
+            "check": [*pyrefly, "check", *pyrefly_config, path_str],
             "trigger": ["pyproject.toml", "pyrefly.toml"],
             "extensions": [".py"],
         },

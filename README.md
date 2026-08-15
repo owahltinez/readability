@@ -80,21 +80,36 @@ readability check . --fix
 
 ### Supported Tools
 
-| Tool | Supported Extensions | Required Before It Runs |
-|------|----------------------|-------------------------|
-| **Ruff** | `.py` | nothing — installed with this package, bundled config |
-| **Pyrefly** | `.py` | nothing — installed with this package, bundled config |
-| **Biome** | `.js`, `.ts`, `.jsx`, `.tsx`, `.json`, `.jsonc`, `.css`, `.html` | `biome.json` or `biome.jsonc` in the project root |
-| **Prettier** | `.js`, `.ts`, `.jsx`, `.tsx`, `.json`, `.css`, `.scss`, `.html`, `.md`, `.yml`, `.yaml` | `.prettierrc*` or `prettier.config.*` |
-| **gofmt** | `.go` | `go.mod` |
+| Tool | Supported Extensions | Config Needed | Fetched By |
+|------|----------------------|---------------|------------|
+| **Ruff** | `.py` | none, bundled | `uvx` |
+| **Pyrefly** | `.py` | none, bundled | `uvx` |
+| **Biome** | `.js`, `.ts`, `.jsx`, `.tsx`, `.json`, `.jsonc`, `.css`, `.html` | `biome.json` or `biome.jsonc` | `npx` |
+| **Prettier** | `.js`, `.ts`, `.jsx`, `.tsx`, `.json`, `.css`, `.scss`, `.html`, `.md`, `.yml`, `.yaml` | `.prettierrc*` or `prettier.config.*` | `npx` |
+| **gofmt** | `.go` | `go.mod` | — |
 
-Ruff and Pyrefly are dependencies of this package and ship with bundled
-configurations, so they run on any file they handle without the project
-arranging anything. Biome, Prettier and gofmt bring no defaults here, so they
-wait until the project asks for them with a config file, and are run through
-`npx` where applicable.
+**You do not need to install any of these.** Each is resolved in order: a
+project-local install (`node_modules/.bin`, `.venv/bin`) first, then whatever
+is on your `PATH`, and only then fetched by `uvx` or `npx`. The runners cache
+what they download, so the fetch happens once per machine and later runs are
+served from disk and work offline.
 
-A tool that is wanted but not installed is never skipped quietly:
+That keeps this package at ~4 MB rather than the ~54 MB it would take to
+carry Ruff and Pyrefly itself — a cost that would fall on everyone using only
+`guide`. An installed copy always wins over a fetched one, so a project that
+pinned a version is linted against the rules it chose.
+
+Fetched versions are pinned to a compatible range, so a new release cannot
+change your findings with nothing in your project having changed. Set
+`UV_OFFLINE=1` to forbid fetching; anything unreachable is then reported as
+missing rather than downloaded.
+
+Ruff and Pyrefly ship with bundled configurations, so they run on any file
+they handle without the project arranging anything. Biome, Prettier and gofmt
+bring no defaults here, so they wait until the project asks with a config
+file.
+
+A tool that could not be reached at all is never skipped quietly:
 
 ```bash
 # Some tools ran, so the result stands, but coverage was partial
@@ -106,6 +121,9 @@ No findings in 1 path(s) (ruff, pyrefly).
 $ readability check src/
 Error: Every tool for 1 path(s) is missing, so nothing was verified.
 ```
+
+That second case needs neither the tool nor a runner to be present, which is
+the state a container image is usually in.
 
 `check` exits non-zero on findings and on having verified nothing, so it can
 gate CI without a clean exit ever meaning "the tools were absent".

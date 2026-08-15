@@ -1743,3 +1743,53 @@ def test_node_tools_fall_back_to_npx(tmp_path: Path) -> None:
 
     cmd = tools["prettier"]["check_format"]
     assert cmd[:3] == ["npx", "-y", "prettier"]
+
+
+def test_python_tools_fall_back_to_a_pinned_runner(tmp_path: Path) -> None:
+    """A tool nobody installed is still reachable, and still reproducible.
+
+    uvx downloads once and serves every later run from its cache, so the
+    package need not carry 50 MB of binaries to make check work. The version
+    is pinned to a range so a new ruff release cannot change a project's
+    findings underneath it.
+    """
+    with patch("shutil.which", return_value=None):
+        tools = {
+            t["name"]: t for t in _get_tool_definitions(Path("f.py"), tmp_path)
+        }
+
+    ruff = tools["ruff"]["check"]
+    assert ruff[0] == "uvx"
+    assert ruff[1].startswith("ruff>=")
+    assert "<" in ruff[1], f"unpinned upper bound: {ruff[1]}"
+
+    pyrefly = tools["pyrefly"]["check"]
+    assert pyrefly[0] == "uvx"
+    assert pyrefly[1].startswith("pyrefly>=")
+
+
+def test_python_tools_prefer_a_project_virtualenv(tmp_path: Path) -> None:
+    """A project's own venv pins the version its findings were written for."""
+    local = tmp_path / ".venv" / "bin"
+    local.mkdir(parents=True)
+    binary = local / "ruff"
+    binary.write_text("#!/bin/sh\n")
+    binary.chmod(0o755)
+
+    with patch("shutil.which", return_value=None):
+        tools = {
+            t["name"]: t for t in _get_tool_definitions(Path("f.py"), tmp_path)
+        }
+
+    assert tools["ruff"]["check"][0] == str(binary)
+
+
+def test_an_installed_tool_beats_the_runner(tmp_path: Path) -> None:
+    """Nothing is downloaded when the machine already has the tool."""
+    with patch("shutil.which", side_effect=lambda x: f"/usr/bin/{x}"):
+        tools = {
+            t["name"]: t for t in _get_tool_definitions(Path("f.py"), tmp_path)
+        }
+
+    assert tools["ruff"]["check"][0] == "/usr/bin/ruff"
+    assert "uvx" not in tools["ruff"]["check"]
