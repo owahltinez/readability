@@ -447,19 +447,20 @@ def _slugify(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
 
 
-def format_outline(
-    headings: Sequence[Heading], depth: Optional[int] = None
-) -> str:
+def format_outline(headings: Sequence[Heading]) -> str:
     """Render a heading tree, one heading per line.
+
+    The tree is never trimmed. Every shipped guide outlines in under 6 KB
+    where the guide itself reaches 200 KB, so there is nothing to save by
+    showing less, and a trimmed outline hides the section a caller wanted.
 
     Args:
         headings: The headings of a guide, in document order.
-        depth: Maximum number of heading levels to show, or None for all.
 
     Returns:
-        The outline as text: indentation for depth, the positional index to
-        pass to --section, then the heading's own text verbatim so a rule can
-        be cited exactly as the guide writes it.
+        The outline as text: indentation for depth, the index to pass as REF,
+        then the heading's own text verbatim so a rule can be cited exactly
+        as the guide writes it.
     """
     if not headings:
         return ""
@@ -467,9 +468,6 @@ def format_outline(
     top_level = min(heading.level for heading in headings)
     lines = []
     for heading in headings:
-        if depth is not None and heading.level - top_level >= depth:
-            continue
-
         # The document title roots the tree and has no index to print
         indent = "  " * (heading.level - top_level)
         prefix = f"{heading.index}  " if heading.index else ""
@@ -693,8 +691,8 @@ def _select_section(content: str, reference: str, language: str) -> str:
     if not matches:
         click.echo(
             f"Error: Found no heading matching '{reference}' in the "
-            f"'{language}' guide. Run 'readability guide {language} "
-            "--outline' to list its sections.",
+            f"'{language}' guide. Run 'readability guide {language}' "
+            "to list its sections.",
             err=True,
         )
         sys.exit(1)
@@ -713,7 +711,7 @@ def _select_section(content: str, reference: str, language: str) -> str:
             # A path suggestion already reads as its own description
             if suggestion.strip('"') != description:
                 suggestion = f"{suggestion} ({description})"
-            click.echo(f"  --section {suggestion}", err=True)
+            click.echo(f"  {suggestion}", err=True)
         if len(matches) > MAX_REPORTED_MATCHES:
             click.echo(
                 f"  ... and {len(matches) - MAX_REPORTED_MATCHES} more",
@@ -734,80 +732,52 @@ def cli(ctx: click.Context, verbose: bool) -> None:
 
 
 @cli.command()
-@click.argument("language")
+@click.argument("language", required=False)
+@click.argument("reference", required=False, metavar="[REF]")
 @click.option(
-    "--output",
-    "-o",
-    type=click.Path(),
-    help="Path to save the style guide markdown.",
-)
-@click.option(
-    "--remote", "-r", is_flag=True, help="Force fetching from the web."
-)
-@click.option(
-    "--outline",
+    "--full",
     is_flag=True,
-    help="Print the guide's heading tree instead of its contents.",
-)
-@click.option(
-    "--section",
-    "section",
-    metavar="REF",
-    help=(
-        "Print one section, named by heading text, a parent-scoped path "
-        "('Imports > Decision'), or an outline index ('2.2.1')."
-    ),
-)
-@click.option(
-    "--depth",
-    type=click.IntRange(min=1),
-    help="Limit --outline to this many heading levels.",
+    help="Print the whole guide, for grepping rather than reading.",
 )
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging.")
 def guide(
-    language: str,
-    output: Optional[str],
-    remote: bool,
-    outline: bool,
-    section: Optional[str],
-    depth: Optional[int],
+    language: Optional[str],
+    reference: Optional[str],
+    full: bool,
     verbose: bool,
 ) -> None:
-    """Fetch the style guide for a specific LANGUAGE.
+    """Read the Google style guide for LANGUAGE.
 
-    With no other option the whole guide is printed, which for a large guide
-    is better piped than read: --outline lists its sections and --section
-    prints one. --outline takes precedence over --section.
+    With no LANGUAGE, lists the languages that have one. With no REF, prints
+    the guide's outline, which is a few kilobytes where the guide itself can
+    be two hundred. REF then names a section to print: heading text, a
+    parent-scoped path ('Imports > Decision'), or an index from the outline
+    ('2.2.1').
     """
     if verbose:
         logger.setLevel(logging.DEBUG)
 
+    # No language names no guide, so the useful answer is which ones exist
+    if not language:
+        _echo_languages()
+        return
+
+    # Refusing beats picking a winner: a silent precedence rule is how the
+    # caller ends up reading the wrong thing without being told.
+    if full and reference:
+        raise click.UsageError("--full takes the whole guide, so REF cannot.")
+
     logger.info("Processing style guide for: %s", language)
 
     try:
-        # Fetch and process the style guide
-        markdown_content = get_guide(language, remote=remote)
+        content = get_guide(language)
 
-        # Navigation replaces the contents with the part that was asked for,
-        # so --output and stdout keep working the same way for both
-        if outline:
-            markdown_content = format_outline(
-                parse_headings(markdown_content), depth=depth
-            )
-        elif section:
-            markdown_content = _select_section(
-                markdown_content, section, language
-            )
-
-        # Handle output: either save to file or print to stdout
-        if output:
-            with open(output, "w", encoding="utf-8") as f:
-                f.write(markdown_content)
-            # A write the caller asked for is an outcome, not narration, and
-            # goes to stderr so it never contaminates piped guide content.
-            click.echo(f"Saved to {output}", err=True)
+        if full:
+            click.echo(content)
+        elif reference:
+            click.echo(_select_section(content, reference, language))
         else:
-            click.echo(markdown_content)
+            click.echo(format_outline(parse_headings(content)))
 
     except (click.ClickException, click.UsageError) as e:
         logger.error("Execution failed: %s", e)
@@ -856,25 +826,18 @@ def sync(verbose: bool) -> None:
     )
 
 
-@cli.command()
-def languages() -> None:
-    """List all supported languages and their aliases."""
-    # Group languages by their target guide
-    guides = {}
+def _echo_languages() -> None:
+    """Print the languages that have a guide, with their aliases."""
+    # Group languages by their target guide so aliases share one line
+    guides: dict[str, list[str]] = {}
     for lang, filename in LANGUAGE_MAP.items():
-        if filename not in guides:
-            guides[filename] = []
-        guides[filename].append(lang)
+        guides.setdefault(filename, []).append(lang)
 
     click.echo("Supported languages and their aliases:")
     for filename in sorted(guides.keys()):
         aliases = sorted(guides[filename])
-
-        # Check if the guide is cached
-        local_path = get_local_path(filename)
-        cached_label = " [cached]" if os.path.exists(local_path) else ""
-
-        click.echo(f"  - {', '.join(aliases)}{cached_label}")
+        cached = " [cached]" if os.path.exists(get_local_path(filename)) else ""
+        click.echo(f"  - {', '.join(aliases)}{cached}")
 
 
 @cli.command()

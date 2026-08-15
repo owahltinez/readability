@@ -137,47 +137,17 @@ def test_cli_unsupported() -> None:
 
 
 @patch("readability.get_guide")
-def test_cli_success(mock_guide: MagicMock) -> None:
-    """Tests successful CLI execution.
-
-    Args:
-        mock_guide: The mocked get_guide function.
-    """
-    mock_guide.return_value = "# Style Guide"
-    runner = CliRunner()
-    result = runner.invoke(cli, ["guide", "python"])
-    assert result.exit_code == 0
-    assert "# Style Guide" in result.output
-
-
-@patch("readability.get_guide")
-def test_cli_output_file(mock_guide: MagicMock, tmp_path: Path) -> None:
-    """Tests CLI saving to a file.
-
-    Args:
-        mock_guide: The mocked get_guide function.
-        tmp_path: The temporary directory fixture.
-    """
-    mock_guide.return_value = "# Style Guide"
-    output_file = tmp_path / "style.md"
-    runner = CliRunner()
-    result = runner.invoke(cli, ["guide", "python", "-o", str(output_file)])
-    assert result.exit_code == 0
-    assert output_file.read_text() == "# Style Guide"
-
-
-@patch("readability.get_guide")
 def test_cli_verbose(mock_guide: MagicMock) -> None:
     """Tests CLI with verbose flag.
 
     Args:
         mock_guide: The mocked get_guide function.
     """
-    mock_guide.return_value = "# Style Guide"
+    mock_guide.return_value = "# Style Guide\n\n## Section\n\nBody.\n"
     runner = CliRunner()
     result = runner.invoke(cli, ["guide", "python", "--verbose"])
     assert result.exit_code == 0
-    assert "# Style Guide" in result.output
+    assert "Section" in result.stdout
 
 
 @patch("readability.get_guide_content")
@@ -210,7 +180,7 @@ def test_sync_command(
 def test_languages_command() -> None:
     """Tests the languages command."""
     runner = CliRunner()
-    result = runner.invoke(cli, ["languages"])
+    result = runner.invoke(cli, ["guide"])
     assert result.exit_code == 0
     assert "Supported languages and their aliases:" in result.output
     # Check for some common languages
@@ -232,7 +202,7 @@ def test_languages_command_with_cache(tmp_path: Path) -> None:
         python_cache.write_text("content")
 
         runner = CliRunner()
-        result = runner.invoke(cli, ["languages"])
+        result = runner.invoke(cli, ["guide"])
 
         assert result.exit_code == 0
         assert "python [cached]" in result.output
@@ -848,12 +818,12 @@ def test_parse_headings_indices_survive_skipped_levels() -> None:
 def test_cli_outline_prints_the_heading_tree(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """Tests that --outline prints an indexed heading tree, without bodies."""
+    """Tests that a bare invocation prints the tree, without bodies."""
     monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
     _write_guide(tmp_path, NUMBERED_GUIDE)
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["guide", "python", "--outline"])
+    result = runner.invoke(cli, ["guide", "python"])
 
     assert result.exit_code == 0
     lines = result.stdout.splitlines()
@@ -879,27 +849,11 @@ def test_cli_outline_ignores_headings_inside_code_blocks(
     _write_guide(tmp_path, NUMBERED_GUIDE)
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["guide", "python", "--outline"])
+    result = runner.invoke(cli, ["guide", "python"])
 
     assert result.exit_code == 0
     assert "Not a heading" not in result.stdout
     assert "Also not a heading" not in result.stdout
-
-
-def test_cli_outline_depth_limits_the_tree(tmp_path: Path, monkeypatch) -> None:
-    """Tests that --depth trims the outline of a deeply nested guide."""
-    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
-    _write_guide(tmp_path, NUMBERED_GUIDE)
-
-    runner = CliRunner()
-    result = runner.invoke(
-        cli, ["guide", "python", "--outline", "--depth", "3"]
-    )
-
-    assert result.exit_code == 0
-    assert "2  Language Rules" in result.stdout
-    assert "2.1  Lint" in result.stdout
-    assert "Decision" not in result.stdout
 
 
 def test_cli_section_by_number(tmp_path: Path, monkeypatch) -> None:
@@ -908,7 +862,7 @@ def test_cli_section_by_number(tmp_path: Path, monkeypatch) -> None:
     _write_guide(tmp_path, NUMBERED_GUIDE)
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["guide", "python", "--section", "2.2"])
+    result = runner.invoke(cli, ["guide", "python", "2.2"])
 
     assert result.exit_code == 0
     assert result.stdout.startswith("### 2.2 Imports")
@@ -927,7 +881,7 @@ def test_cli_section_by_title_is_case_insensitive(
     _write_guide(tmp_path, NUMBERED_GUIDE)
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["guide", "python", "--section", "imports"])
+    result = runner.invoke(cli, ["guide", "python", "imports"])
 
     assert result.exit_code == 0
     assert result.stdout.startswith("### 2.2 Imports")
@@ -941,9 +895,7 @@ def test_cli_section_by_slug_in_an_unnumbered_guide(
     _write_guide(tmp_path, UNNUMBERED_GUIDE, name="shellguide.md")
 
     runner = CliRunner()
-    result = runner.invoke(
-        cli, ["guide", "shell", "--section", "which-shell-to-use"]
-    )
+    result = runner.invoke(cli, ["guide", "shell", "which-shell-to-use"])
 
     assert result.exit_code == 0
     assert result.stdout.startswith("### Which Shell to Use")
@@ -958,7 +910,7 @@ def test_cli_section_by_positional_index_without_numbering(
     _write_guide(tmp_path, UNNUMBERED_GUIDE, name="shellguide.md")
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["guide", "shell", "--section", "2.1"])
+    result = runner.invoke(cli, ["guide", "shell", "2.1"])
 
     assert result.exit_code == 0
     assert result.stdout.startswith("### File Header")
@@ -974,7 +926,7 @@ def test_cli_section_keeps_fenced_headings_in_the_body(
     _write_guide(tmp_path, UNNUMBERED_GUIDE, name="shellguide.md")
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["guide", "shell", "--section", "File Header"])
+    result = runner.invoke(cli, ["guide", "shell", "File Header"])
 
     assert result.exit_code == 0
     assert "# Perform hot backups of Oracle databases." in result.stdout
@@ -990,7 +942,7 @@ def test_cli_section_ambiguous_reports_every_match(
     _write_guide(tmp_path, NUMBERED_GUIDE)
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["guide", "python", "--section", "Decision"])
+    result = runner.invoke(cli, ["guide", "python", "Decision"])
 
     assert result.exit_code == 1
     # Nothing goes to stdout, so a pipeline sees no half-right section
@@ -1006,9 +958,7 @@ def test_cli_section_path_disambiguates(tmp_path: Path, monkeypatch) -> None:
     _write_guide(tmp_path, NUMBERED_GUIDE)
 
     runner = CliRunner()
-    result = runner.invoke(
-        cli, ["guide", "python", "--section", "Imports > Decision"]
-    )
+    result = runner.invoke(cli, ["guide", "python", "Imports > Decision"])
 
     assert result.exit_code == 0
     assert result.stdout.startswith("#### 2.2.4 Decision")
@@ -1024,12 +974,12 @@ def test_cli_section_unknown_reference_fails(
     _write_guide(tmp_path, NUMBERED_GUIDE)
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["guide", "python", "--section", "Concurrency"])
+    result = runner.invoke(cli, ["guide", "python", "Concurrency"])
 
     assert result.exit_code == 1
     assert result.stdout == ""
     assert "no heading" in result.stderr.lower()
-    assert "--outline" in result.stderr
+    assert "readability guide python" in result.stderr
 
 
 def test_cli_section_rejects_an_unsupported_language(
@@ -1039,7 +989,7 @@ def test_cli_section_rejects_an_unsupported_language(
     monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["guide", "nonexistent", "--outline"])
+    result = runner.invoke(cli, ["guide", "nonexistent"])
 
     assert result.exit_code == 1
     assert "not supported" in result.output
@@ -1061,37 +1011,10 @@ def test_cli_section_drops_the_next_sections_anchors(
     )
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["guide", "python", "--section", "First"])
+    result = runner.invoke(cli, ["guide", "python", "First"])
 
     assert result.exit_code == 0
     assert result.stdout.strip().endswith("First body.")
-
-
-def test_cli_section_writes_to_an_output_file(
-    tmp_path: Path, monkeypatch
-) -> None:
-    """Tests that --output saves the selected section, not the whole guide."""
-    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
-    _write_guide(tmp_path, NUMBERED_GUIDE)
-    output_file = tmp_path / "section.md"
-
-    runner = CliRunner()
-    result = runner.invoke(
-        cli,
-        [
-            "guide",
-            "python",
-            "--section",
-            "2.2",
-            "--output",
-            str(output_file),
-        ],
-    )
-
-    assert result.exit_code == 0
-    saved = output_file.read_text()
-    assert saved.startswith("### 2.2 Imports")
-    assert "Background body." not in saved
 
 
 def test_cli_section_number_never_collides_with_an_index(
@@ -1111,7 +1034,7 @@ def test_cli_section_number_never_collides_with_an_index(
     )
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["guide", "python", "--section", "3"])
+    result = runner.invoke(cli, ["guide", "python", "3"])
 
     assert result.exit_code == 0
     assert result.stdout.startswith("## 3 Beta")
@@ -1129,22 +1052,20 @@ def test_cli_section_suggestions_always_resolve(
     _write_guide(tmp_path, NUMBERED_GUIDE)
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["guide", "python", "--section", "Decision"])
+    result = runner.invoke(cli, ["guide", "python", "Decision"])
 
     assert result.exit_code == 1
     assert "matches 2 headings" in result.stderr
 
     # Follow each suggestion; all of them must select a single section
     suggestions = [
-        line.split("--section ", 1)[1].split(" (", 1)[0].strip().strip('"')
+        line.split("(", 1)[0].strip().strip('"')
         for line in result.stderr.splitlines()
-        if "--section " in line and line.startswith("  ")
+        if line.startswith("  ")
     ]
     assert len(suggestions) == 2
     for suggestion in suggestions:
-        followed = runner.invoke(
-            cli, ["guide", "python", "--section", suggestion]
-        )
+        followed = runner.invoke(cli, ["guide", "python", suggestion])
         assert followed.exit_code == 0, f"{suggestion!r} did not resolve"
 
 
@@ -1163,9 +1084,7 @@ def test_cli_section_heading_containing_an_angle_bracket(
     )
 
     runner = CliRunner()
-    result = runner.invoke(
-        cli, ["guide", "typescript", "--section", "Array<T> Type"]
-    )
+    result = runner.invoke(cli, ["guide", "typescript", "Array<T> Type"])
 
     assert result.exit_code == 0
     assert result.stdout.startswith("### `Array<T>` Type")
@@ -1319,23 +1238,44 @@ def test_logging_is_quiet_by_default(
     assert mock_config.call_args.kwargs["level"] == logging.WARNING
 
 
-def test_saving_a_guide_confirms_where_it_went(
-    tmp_path: Path, monkeypatch
-) -> None:
-    """A write is an outcome the caller asked for, so it is reported."""
+def test_cli_full_prints_the_whole_guide(tmp_path: Path, monkeypatch) -> None:
+    """--full is the escape hatch for grepping wording no heading names."""
     monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
     _write_guide(tmp_path, NUMBERED_GUIDE)
-    destination = tmp_path / "saved.md"
 
     runner = CliRunner()
-    result = runner.invoke(
-        cli, ["guide", "python", "--output", str(destination)]
-    )
+    result = runner.invoke(cli, ["guide", "python", "--full"])
 
     assert result.exit_code == 0
-    assert str(destination) in result.stderr
-    # The confirmation must not contaminate the guide on stdout
-    assert result.stdout == ""
+    assert "Background body." in result.stdout
+    assert "Imports body." in result.stdout
+
+
+def test_cli_full_and_a_reference_is_refused(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A silent precedence rule is how a caller reads the wrong thing."""
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    _write_guide(tmp_path, NUMBERED_GUIDE)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["guide", "python", "2.2", "--full"])
+
+    assert result.exit_code != 0
+    assert "--full" in result.output
+
+
+def test_cli_outline_is_the_default(tmp_path: Path, monkeypatch) -> None:
+    """The cheap answer is the default; the 200 KB one is opt-in."""
+    monkeypatch.setenv("READABILITY_CACHE", str(tmp_path))
+    _write_guide(tmp_path, NUMBERED_GUIDE)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["guide", "python"])
+
+    assert result.exit_code == 0
+    assert "2.2  Imports" in result.stdout
+    assert "Imports body." not in result.stdout
 
 
 def test_check_reports_that_it_found_nothing(tmp_path: Path) -> None:
