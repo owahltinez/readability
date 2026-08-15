@@ -1196,18 +1196,30 @@ def check_paths(
     the result.
 
     Args:
-        paths: Files or directories to check, as strings or paths.
-        project_root: Root used to discover tool configuration. Defaults to
-            the current working directory.
+        paths: Files or directories to check, as strings or paths. Relative
+            paths are interpreted from the current working directory.
+        project_root: Root used only to discover tool configuration. Defaults
+            to the current working directory; it does not rebase paths.
         fix: Whether to apply automatic fixes.
 
     Returns:
         A report aggregated across all provided paths.
+
+    Raises:
+        FileNotFoundError: If any requested path does not exist. Every path is
+            validated before any tools run.
     """
     root = Path.cwd() if project_root is None else project_root
+    requested_paths = [Path(path) for path in paths]
+    missing_path = next(
+        (path for path in requested_paths if not path.exists()), None
+    )
+    if missing_path is not None:
+        raise FileNotFoundError(f"Path does not exist: {missing_path}")
+
     report = CheckReport()
-    for path in paths:
-        report.absorb(_check_path(Path(path), root, fix=fix))
+    for path in requested_paths:
+        report.absorb(_check_path(path, root, fix=fix))
     return report
 
 
