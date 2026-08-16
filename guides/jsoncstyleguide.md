@@ -123,7 +123,7 @@ Property names must conform to the following guidelines:
 
 * Property names should be meaningful names with defined semantics.
 * Property names must be camel-cased, ascii strings.
-* The first character must be a letter, an underscore (\_) or a dollar sign ($).
+* The first character must be a letter, an underscore (_) or a dollar sign ($).
 * Subsequent characters can be a letter, a digit, an underscore, or a dollar sign.
 * Reserved JavaScript keywords should be avoided (A list of reserved JavaScript keywords can be found below).
 
