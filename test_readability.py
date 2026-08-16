@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import subprocess
@@ -505,14 +506,71 @@ def test_default_configs_omitted_when_project_configured(
     assert "--config" not in tools["ruff"]["format"]
     assert "--config" not in tools["pyrefly"]["check"]
 
+    ts_file = tmp_path / "script.ts"
+    ts_file.touch()
+    (tmp_path / "biome.json").write_text("{}")
+    tools = {t["name"]: t for t in _get_tool_definitions(ts_file, tmp_path)}
+    for command in ("check", "check_format", "fix", "format"):
+        assert "--config-path" not in tools["biome"][command]
 
-def test_bundled_default_configs_are_valid(tmp_path: Path) -> None:
-    """Tests that the bundled default configs exist and parse as TOML."""
-    # Both bundled configs must exist and be valid TOML
+
+def test_biome_bundled_config_is_injected_into_every_command(
+    tmp_path: Path,
+) -> None:
+    """Linting, formatting, and their fix forms share the safe default."""
+    ts_file = tmp_path / "script.ts"
+    ts_file.touch()
+
+    tools = {t["name"]: t for t in _get_tool_definitions(ts_file, tmp_path)}
+    config_path = str(_bundled_config("biome"))
+
+    for command_name in ("check", "check_format", "fix", "format"):
+        command = tools["biome"][command_name]
+        assert command[command.index("--config-path") + 1] == config_path
+        assert "--vcs-enabled=true" not in command
+
+
+@pytest.mark.parametrize(
+    "ignore_file", (".gitignore", ".ignore", ".git/info/exclude")
+)
+def test_biome_bundled_config_respects_project_ignore_files(
+    tmp_path: Path, ignore_file: str
+) -> None:
+    """An external default keeps ignore discovery rooted in the project."""
+    ts_file = tmp_path / "script.ts"
+    ts_file.touch()
+    ignore_path = tmp_path / ignore_file
+    ignore_path.parent.mkdir(parents=True, exist_ok=True)
+    ignore_path.write_text("node_modules/\n")
+
+    tools = {t["name"]: t for t in _get_tool_definitions(ts_file, tmp_path)}
+
+    for command_name in ("check", "check_format", "fix", "format"):
+        command = tools["biome"][command_name]
+        assert "--vcs-enabled=true" in command
+        assert "--vcs-client-kind=git" in command
+        assert "--vcs-use-ignore-file=true" in command
+        assert f"--vcs-root={tmp_path}" in command
+
+
+def test_bundled_default_configs_are_valid() -> None:
+    """Tests that the bundled default configs exist and parse."""
+    # Both Python configs must exist and be valid TOML
     for tool in ("ruff", "pyrefly"):
         config_path = _bundled_config(tool)
         assert config_path.exists()
         tomllib.loads(config_path.read_text())
+
+    biome_config_path = _bundled_config("biome")
+    assert biome_config_path.exists()
+    biome_config = json.loads(biome_config_path.read_text())
+    assert biome_config["formatter"] == {
+        "enabled": True,
+        "indentStyle": "space",
+        "indentWidth": 2,
+        "lineWidth": 80,
+    }
+    assert biome_config["linter"]["rules"]["recommended"] is True
 
     # The ruff defaults follow the Google Python style guide
     ruff_config = tomllib.loads(_bundled_config("ruff").read_text())
@@ -558,6 +616,29 @@ def test_check_paths_aggregates_str_and_path_inputs(
         call(Path("src/example.py"), project_root, fix=True),
         call(Path("README.md"), project_root, fix=True),
     ]
+
+
+@patch("readability._check_path")
+def test_check_paths_preserves_unverified_paths_when_another_path_ran(
+    mock_check_path: MagicMock,
+    tmp_path: Path,
+) -> None:
+    """One checked path must not hide another path that processed no files."""
+    checked = tmp_path / "src"
+    unchecked = tmp_path / "ignored"
+    checked.mkdir()
+    unchecked.mkdir()
+    mock_check_path.side_effect = [
+        CheckReport(ran={"biome"}),
+        CheckReport(),
+    ]
+
+    report = check_paths([checked, unchecked], project_root=tmp_path)
+
+    assert report == CheckReport(
+        ran={"biome"},
+        unverified_paths=[unchecked],
+    )
 
 
 @patch("readability._check_path", return_value=CheckReport(ran={"ruff"}))
@@ -1789,10 +1870,10 @@ def test_check_runs_bundled_default_tools_without_a_trigger(
 
 @patch("shutil.which")
 @patch("subprocess.run")
-def test_check_still_gates_tools_without_bundled_defaults(
+def test_check_runs_biome_without_a_project_config(
     mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
 ) -> None:
-    """Biome and Prettier have no defaults here, so a project must ask."""
+    """A bundled Biome config covers web files in unconfigured projects."""
     mock_which.side_effect = lambda x: x
     mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
 
@@ -1803,13 +1884,179 @@ def test_check_still_gates_tools_without_bundled_defaults(
         result = runner.invoke(cli, ["check", "script.ts"])
 
     assert result.exit_code == 0
-    called = [call.args[0][0] for call in mock_run.call_args_list]
-    assert "npx" not in called
+    called = [call.args[0] for call in mock_run.call_args_list]
+    assert any(command[0] == "biome" for command in called)
+    assert all("prettier" not in command for command in called)
+    config_path = str(_bundled_config("biome"))
+    biome_commands = [command for command in called if command[0] == "biome"]
+    assert biome_commands
+    assert all(
+        command[command.index("--config-path") + 1] == config_path
+        for command in biome_commands
+    )
 
 
 @patch("shutil.which")
 @patch("subprocess.run")
-def test_check_without_defaults_respects_its_trigger(
+def test_bundled_tools_do_not_claim_an_unsupported_directory(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """A zero-file tool run must not turn nothing checked into a clean pass."""
+    mock_which.side_effect = lambda x: x
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("notes.md").touch()
+
+        result = runner.invoke(cli, ["check", "."])
+
+    assert result.exit_code == 0
+    output = result.stdout + result.stderr
+    assert "nothing was checked" in output
+    assert "No findings" not in output
+    mock_run.assert_not_called()
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_biome_zero_file_result_is_not_reported_as_clean(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """Ignored matches must not make an unverified directory look clean."""
+    mock_which.side_effect = lambda x: x if x == "biome" else None
+    checked_nothing = MagicMock(
+        returncode=0,
+        stdout="",
+        stderr="Checked 0 files in 1ms. No fixes applied.\n",
+    )
+    formatted_nothing = MagicMock(
+        returncode=0,
+        stdout="Formatted 0 files in 1ms. No fixes applied.\n",
+        stderr="",
+    )
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path(".gitignore").write_text("node_modules/\n")
+        Path("node_modules/example").mkdir(parents=True)
+        Path("node_modules/example/index.js").touch()
+        Path("README.md").touch()
+
+        for extra_args, expected_calls in (([], 2), (["--fix"], 3)):
+            mock_run.side_effect = (
+                [checked_nothing, checked_nothing]
+                if not extra_args
+                else [formatted_nothing, checked_nothing, checked_nothing]
+            )
+            result = runner.invoke(cli, ["check", ".", *extra_args])
+
+            assert result.exit_code == 0
+            output = result.stdout + result.stderr
+            assert "nothing was checked" in output
+            assert "No findings" not in output
+            assert mock_run.call_count == expected_calls
+            mock_run.reset_mock()
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_biome_zero_file_path_is_not_hidden_by_a_checked_path(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """A clean aggregate identifies requested paths Biome did not inspect."""
+    mock_which.side_effect = lambda x: x if x == "biome" else None
+    checked_files = MagicMock(returncode=0, stdout="", stderr="")
+    checked_nothing = MagicMock(
+        returncode=0,
+        stdout="Checked 0 files in 1ms. No fixes applied.\n",
+        stderr="",
+    )
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path(".gitignore").write_text("ignored/\n")
+        Path("src").mkdir()
+        Path("src/good.js").touch()
+        Path("ignored").mkdir()
+        Path("ignored/generated.js").touch()
+        mock_run.side_effect = [
+            checked_files,
+            checked_files,
+            checked_nothing,
+            checked_nothing,
+        ]
+
+        result = runner.invoke(cli, ["check", "src", "ignored"])
+
+    assert result.exit_code == 0
+    assert "nothing was checked for 1 path(s): ignored" in result.stderr
+    assert "No findings in 1 path(s) (biome)." in result.stderr
+    assert "No findings in 2 path(s)" not in result.stderr
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_biome_zero_file_failure_still_exits_nonzero(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """A configuration failure must not become a successful no-tool result."""
+    mock_which.side_effect = lambda x: x if x == "biome" else None
+    checked_nothing = MagicMock(
+        returncode=1,
+        stdout="Checked 0 files in 1ms.\nConfiguration error.\n",
+        stderr="",
+    )
+    formatted_nothing = MagicMock(
+        returncode=1,
+        stdout="Formatted 0 files in 1ms.\nConfiguration error.\n",
+        stderr="",
+    )
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("script.ts").touch()
+
+        for extra_args in ([], ["--fix"]):
+            mock_run.side_effect = (
+                [checked_nothing, checked_nothing]
+                if not extra_args
+                else [formatted_nothing, checked_nothing, checked_nothing]
+            )
+            result = runner.invoke(cli, ["check", "script.ts", *extra_args])
+
+            assert result.exit_code == 1
+            output = result.stdout + result.stderr
+            assert "biome findings" in output
+            assert "nothing was checked" not in output
+            mock_run.reset_mock()
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_bundled_biome_applies_to_a_nested_web_file(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """Directory applicability still finds nested web files."""
+    mock_which.side_effect = lambda x: x if x == "biome" else None
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("src").mkdir()
+        Path("src/script.ts").touch()
+
+        result = runner.invoke(cli, ["check", "."])
+
+    assert result.exit_code == 0
+    assert "No findings in 1 path(s) (biome)." in result.stderr
+    called = [call.args[0][0] for call in mock_run.call_args_list]
+    assert called == ["biome", "biome"]
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_check_with_project_config_runs_biome(
     mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
 ) -> None:
     """With biome.json present, biome runs as it always did."""

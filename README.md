@@ -10,8 +10,9 @@ and quick access to style conventions without browsing HTML pages.
 
 - **Linting & Formatting**: A `check` command that automatically detects and
   runs relevant tools (Ruff, Pyrefly, Biome, Prettier, gofmt) for your project.
-- **Sensible Defaults**: Bundled Google-style configurations for Ruff and
-  Pyrefly are used automatically when a project does not define its own.
+- **Sensible Defaults**: Bundled Google-style configurations for Ruff,
+  Pyrefly, and Biome are used automatically when a project does not define its
+  own.
 - **Style Guides**: A `guide` command that fetches the latest Google style
   guides (Python, Shell, C++, Java, JS/TS, Go, etc.) converted to Markdown,
   and outlines, addresses, and searches them by section rather than serving
@@ -84,7 +85,7 @@ readability check . --fix
 |------|----------------------|---------------|------------|
 | **Ruff** | `.py` | none, bundled | `uvx` |
 | **Pyrefly** | `.py` | none, bundled | `uvx` |
-| **Biome** | `.js`, `.ts`, `.jsx`, `.tsx`, `.json`, `.jsonc`, `.css`, `.html` | `biome.json` or `biome.jsonc` | `npx` |
+| **Biome** | `.js`, `.ts`, `.jsx`, `.tsx`, `.json`, `.jsonc`, `.css`, `.html` | none, bundled | `npx` |
 | **Prettier** | `.js`, `.ts`, `.jsx`, `.tsx`, `.json`, `.css`, `.scss`, `.html`, `.md`, `.yml`, `.yaml` | `.prettierrc*` or `prettier.config.*` | `npx` |
 | **gofmt** | `.go` | `go.mod` | — |
 
@@ -109,10 +110,9 @@ always wins over a fetched one.
 Set `UV_OFFLINE=1` to forbid fetching. A tool that then cannot be reached
 fails the run rather than passing it.
 
-Ruff and Pyrefly ship with bundled configurations, so they run on any file
-they handle without the project arranging anything. Biome, Prettier and gofmt
-bring no defaults here, so they wait until the project asks with a config
-file.
+Ruff, Pyrefly, and Biome ship with bundled configurations, so they run on any
+file they handle without the project arranging anything. Prettier and gofmt
+bring no defaults here, so they wait until the project asks with a config file.
 
 A tool that could not be reached at all is never skipped quietly:
 
@@ -130,8 +130,10 @@ Error: Every tool for 1 path(s) is missing, so nothing was verified.
 That second case needs neither the tool nor a runner to be present, which is
 the state a container image is usually in.
 
-`check` exits non-zero on findings and on having verified nothing, so it can
-gate CI without a clean exit ever meaning "the tools were absent".
+`check` exits non-zero on findings, tool failures, and when every applicable
+tool is absent, so it can gate CI without a clean exit meaning required tools
+were missing. If no tool applies to the requested paths, it reports that fact
+and exits successfully.
 
 ### Python API
 
@@ -157,13 +159,19 @@ Relative paths remain relative to the process working directory;
 
 ### Default Configurations
 
-For Ruff and Pyrefly, bundled defaults based on the
-[Google Python style guide](https://google.github.io/styleguide/pyguide.html)
-(80-column lines, Google docstring convention, import ordering, full type
-checking) are applied when the project does not define its own configuration.
-To override them, add a `[tool.ruff]` or `[tool.pyrefly]` section to your
-`pyproject.toml` (or a dedicated `ruff.toml` / `pyrefly.toml`) — any
-project-level configuration takes full precedence over the bundled defaults.
+Ruff and Pyrefly defaults follow the
+[Google Python style guide](https://google.github.io/styleguide/pyguide.html):
+80-column lines, Google docstrings, import ordering, and full type checking.
+The Biome default applies the 80-column lines and two-space indentation of the
+[Google JavaScript style guide](https://google.github.io/styleguide/jsguide.html)
+and enables Biome's recommended lint rules. These defaults apply only when the
+project does not define its own configuration. To override them, add a
+`[tool.ruff]` or `[tool.pyrefly]` section to your `pyproject.toml`, or a
+dedicated `ruff.toml`, `pyrefly.toml`, `biome.json`, or `biome.jsonc` — any
+project-level configuration takes full precedence. The bundled Biome file
+intentionally uses only settings supported by both Biome 1.x and 2.x, so a
+project-local installation remains authoritative without creating a schema
+mismatch.
 
 ## Style Guides
 
