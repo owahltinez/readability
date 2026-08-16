@@ -459,6 +459,36 @@ def test_check_command_pyrefly(
     assert ["pyrefly", "check", "--config", cfg, "script.py"] in called_cmds
 
 
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_check_command_runs_configured_directory_as_pyrefly_project(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """The CLI lets project-owned includes and excludes select Python files."""
+    mock_which.side_effect = lambda name: name if name == "pyrefly" else None
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("pyrefly.toml").write_text(
+            'project-excludes = ["**/excluded.py"]\n'
+        )
+        Path("main.py").touch()
+        project_root = Path.cwd()
+
+        result = runner.invoke(cli, ["check", "."])
+
+    assert result.exit_code == 0
+    pyrefly_calls = [
+        invocation
+        for invocation in mock_run.call_args_list
+        if invocation.args[0][0] == "pyrefly"
+    ]
+    assert len(pyrefly_calls) == 1
+    assert pyrefly_calls[0].args[0] == ["pyrefly", "check"]
+    assert pyrefly_calls[0].kwargs["cwd"] == project_root
+
+
 def test_has_project_config(tmp_path: Path) -> None:
     """Tests project config detection via dedicated files and pyproject.
 
@@ -512,6 +542,58 @@ def test_default_configs_omitted_when_project_configured(
     tools = {t["name"]: t for t in _get_tool_definitions(ts_file, tmp_path)}
     for command in ("check", "check_format", "fix", "format"):
         assert "--config-path" not in tools["biome"][command]
+
+
+def test_pyrefly_uses_project_mode_only_for_configured_directories(
+    tmp_path: Path,
+) -> None:
+    """Directories use config discovery while explicit files stay explicit."""
+    (tmp_path / "pyrefly.toml").write_text(
+        'project-excludes = ["**/excluded.py"]\n'
+    )
+    py_file = tmp_path / "main.py"
+    py_file.touch()
+
+    with patch("shutil.which", side_effect=lambda name: name):
+        directory_tools = {
+            tool["name"]: tool
+            for tool in _get_tool_definitions(tmp_path, tmp_path)
+        }
+        file_tools = {
+            tool["name"]: tool
+            for tool in _get_tool_definitions(py_file, tmp_path)
+        }
+
+    assert directory_tools["pyrefly"]["check"] == ["pyrefly", "check"]
+    assert directory_tools["pyrefly"]["cwd"] == tmp_path
+    assert file_tools["pyrefly"]["check"] == [
+        "pyrefly",
+        "check",
+        str(py_file),
+    ]
+    assert "cwd" not in file_tools["pyrefly"]
+
+
+def test_pyrefly_bundled_config_keeps_an_explicit_directory(
+    tmp_path: Path,
+) -> None:
+    """Project mode cannot use a config rooted in the installed package."""
+    (tmp_path / "main.py").touch()
+
+    with patch("shutil.which", side_effect=lambda name: name):
+        tools = {
+            tool["name"]: tool
+            for tool in _get_tool_definitions(tmp_path, tmp_path)
+        }
+
+    assert tools["pyrefly"]["check"] == [
+        "pyrefly",
+        "check",
+        "--config",
+        str(_bundled_config("pyrefly")),
+        str(tmp_path),
+    ]
+    assert "cwd" not in tools["pyrefly"]
 
 
 def test_biome_bundled_config_is_injected_into_every_command(
