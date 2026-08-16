@@ -1486,6 +1486,12 @@ def _get_tool_definitions(
     pyrefly_config = _default_config_args(
         project_root, ["pyrefly.toml"], "pyrefly"
     )
+    # An explicit path switches Pyrefly to single-file mode, where the
+    # project's includes, excludes, and project-rooted import resolution are
+    # deliberately ignored. A directory backed by project-owned settings is
+    # a project check, so let Pyrefly discover its files from that config.
+    pyrefly_project_mode = path.is_dir() and not pyrefly_config
+    pyrefly_targets = [] if pyrefly_project_mode else [path_str]
     biome_config = []
     if not any(
         (project_root / filename).exists()
@@ -1552,7 +1558,13 @@ def _get_tool_definitions(
         {
             # Type checker only: it reports findings but cannot fix or format
             "name": "pyrefly",
-            "check": [*pyrefly, "check", *pyrefly_config, path_str],
+            "check": [
+                *pyrefly,
+                "check",
+                *pyrefly_config,
+                *pyrefly_targets,
+            ],
+            **({"cwd": project_root} if pyrefly_project_mode else {}),
             "trigger": ["pyproject.toml", "pyrefly.toml"],
             "extensions": [".py"],
         },
@@ -1668,6 +1680,7 @@ def _run_tool(
     logger.info("Running %s...", tool_name)
 
     report = CheckReport()
+    cwd = tool_config.get("cwd")
     try:
         if fix:
             # Formatters rewrite files, fixers apply what they can. Both
@@ -1676,11 +1689,11 @@ def _run_tool(
             # and report what they could not deal with.
             for phase in ("format", "fix"):
                 if phase in tool_config:
-                    result = _capture_tool_command(tool_config[phase])
+                    result = _capture_tool_command(tool_config[phase], cwd=cwd)
                     if _tool_checked_files(tool_name, result):
                         report.ran.add(tool_name)
         elif "check_format" in tool_config:
-            result = _capture_tool_command(tool_config["check_format"])
+            result = _capture_tool_command(tool_config["check_format"], cwd=cwd)
             if _tool_checked_files(tool_name, result):
                 report.ran.add(tool_name)
             # gofmt reports by naming files rather than by exit code
@@ -1694,7 +1707,7 @@ def _run_tool(
                 )
 
         if "check" in tool_config:
-            result = _capture_tool_command(tool_config["check"])
+            result = _capture_tool_command(tool_config["check"], cwd=cwd)
             if _tool_checked_files(tool_name, result):
                 report.ran.add(tool_name)
             if result.returncode != 0:
@@ -1733,11 +1746,15 @@ def _tool_checked_files(
     return not any(summary in output for summary in zero_file_summaries)
 
 
-def _capture_tool_command(cmd: list[str]) -> subprocess.CompletedProcess:
+def _capture_tool_command(
+    cmd: list[str], cwd: Path | None = None
+) -> subprocess.CompletedProcess:
     """Run a tool and capture what it said, whatever its exit code.
 
     Args:
         cmd: The command list to execute.
+        cwd: Directory in which the tool should run. Defaults to the caller's
+            current working directory.
 
     Returns:
         The completed process, including captured output and its exit code.
@@ -1753,6 +1770,7 @@ def _capture_tool_command(cmd: list[str]) -> subprocess.CompletedProcess:
         text=True,
         check=False,
         timeout=DEFAULT_TIMEOUT,
+        cwd=cwd,
     )
 
 
