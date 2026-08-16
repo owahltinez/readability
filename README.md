@@ -169,9 +169,8 @@ project does not define its own configuration. To override them, add a
 `[tool.ruff]` or `[tool.pyrefly]` section to your `pyproject.toml`, or a
 dedicated `ruff.toml`, `pyrefly.toml`, `biome.json`, or `biome.jsonc` — any
 project-level configuration takes full precedence. The bundled Biome file
-intentionally uses only settings supported by both Biome 1.x and 2.x, so a
-project-local installation remains authoritative without creating a schema
-mismatch.
+requires Biome 2.5 or later, matching the version floor used by the fallback
+runner.
 
 ## Style Guides
 

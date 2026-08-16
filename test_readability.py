@@ -653,6 +653,7 @@ def test_bundled_default_configs_are_valid() -> None:
         "lineWidth": 80,
     }
     assert biome_config["linter"]["rules"]["recommended"] is True
+    assert biome_config["html"]["parser"]["interpolation"] is True
 
     # The ruff defaults follow the Google Python style guide
     ruff_config = tomllib.loads(_bundled_config("ruff").read_text())

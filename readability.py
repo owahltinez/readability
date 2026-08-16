@@ -1741,7 +1741,7 @@ def _tool_checked_files(
     if tool_name != "biome":
         return True
     output = f"{result.stdout or ''}\n{result.stderr or ''}"
-    # Biome 1.x and 2.x use these summaries for an unmatched target.
+    # Biome 2.x uses these summaries for an unmatched target.
     zero_file_summaries = ("Checked 0 files", "Formatted 0 files")
     return not any(summary in output for summary in zero_file_summaries)
 
