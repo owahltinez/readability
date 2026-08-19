@@ -2,7 +2,7 @@ name: Update Style Guides
 
 on:
   schedule:
-    - cron: '0 0 * * 0' # Weekly on Sunday at midnight
+    - cron: "0 0 * * 0" # Weekly on Sunday at midnight
   workflow_dispatch: # Ad-hoc trigger
 
 jobs:
@@ -30,4 +30,4 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "chore: update style guides [skip ci]"
-          file_pattern: 'guides/*.md'
+          file_pattern: "guides/*.md"

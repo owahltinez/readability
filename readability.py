@@ -1288,27 +1288,27 @@ def _should_run_tool(
     Returns:
         True if the tool should run, False otherwise.
     """
-    # A tool shipping bundled defaults needs nothing from the project, so
-    # requiring a config file made those defaults unreachable by exactly the
-    # projects they exist for: an empty pyproject.toml was the difference
-    # between checking a file and checking nothing. Tools without defaults
-    # still wait to be asked, since there is no sane way to run them.
-    has_trigger = _bundled_config(tool["name"]).exists() or any(
+    # Project configuration opts a tool into every extension it supports;
+    # otherwise it handles only the formats with safe readability defaults.
+    has_project_config = any(
         (project_root / t).exists() for t in tool["trigger"]
+    )
+    extensions = (
+        tool["extensions"] if has_project_config else tool["default_extensions"]
     )
 
     # Files must match one of the tool's supported extensions.
     if path.is_file():
-        return has_trigger and path.suffix in tool["extensions"]
+        return path.suffix in extensions
 
-    if not has_trigger:
+    if not extensions:
         return False
 
     # A directory trigger alone is not evidence that the tool checked a file.
     # Several tools deliberately exit zero when nothing matches, which would
     # otherwise turn an unsupported-only tree into a reported clean result.
     return any(
-        candidate.is_file() and candidate.suffix in tool["extensions"]
+        candidate.is_file() and candidate.suffix in extensions
         for candidate in path.rglob("*")
     )
 
@@ -1518,6 +1518,11 @@ def _get_tool_definitions(
     pyrefly = _tool_command("pyrefly", project_root)
     biome = _tool_command("biome", project_root)
     prettier = _tool_command("prettier", project_root)
+    prettier_defaults = [
+        "--print-width=80",
+        "--prose-wrap=always",
+        "--config-precedence=prefer-file",
+    ]
 
     return [
         {
@@ -1554,6 +1559,7 @@ def _get_tool_definitions(
             ],
             "trigger": ["pyproject.toml", "ruff.toml", ".ruff.toml"],
             "extensions": [".py"],
+            "default_extensions": [".py"],
         },
         {
             # Type checker only: it reports findings but cannot fix or format
@@ -1567,6 +1573,7 @@ def _get_tool_definitions(
             **({"cwd": project_root} if pyrefly_project_mode else {}),
             "trigger": ["pyproject.toml", "pyrefly.toml"],
             "extensions": [".py"],
+            "default_extensions": [".py"],
         },
         {
             "name": "biome",
@@ -1611,18 +1618,30 @@ def _get_tool_definitions(
                 ".css",
                 ".html",
             ],
+            "default_extensions": [
+                ".js",
+                ".ts",
+                ".jsx",
+                ".tsx",
+                ".json",
+                ".jsonc",
+                ".css",
+                ".html",
+            ],
         },
         {
             "name": "prettier",
             "check_format": [
                 *prettier,
                 "--check",
+                *prettier_defaults,
                 "--no-error-on-unmatched-pattern",
                 path_str,
             ],
             "format": [
                 *prettier,
                 "--write",
+                *prettier_defaults,
                 "--no-error-on-unmatched-pattern",
                 path_str,
             ],
@@ -1648,6 +1667,7 @@ def _get_tool_definitions(
                 ".yml",
                 ".yaml",
             ],
+            "default_extensions": [".md", ".yml", ".yaml", ".scss"],
         },
         {
             "name": "go fmt",
@@ -1655,6 +1675,7 @@ def _get_tool_definitions(
             "format": ["go", "fmt", path_str],
             "trigger": ["go.mod"],
             "extensions": [".go"],
+            "default_extensions": [],
         },
     ]
 
