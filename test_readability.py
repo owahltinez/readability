@@ -672,32 +672,32 @@ def test_check_paths_aggregates_str_and_path_inputs(
     project_root.mkdir()
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "example.py").touch()
-    (tmp_path / "README.md").touch()
+    (tmp_path / "main.go").touch()
     monkeypatch.chdir(tmp_path)
     mock_check_path.side_effect = [
         CheckReport(ran={"ruff"}, skipped={"pyrefly"}),
         CheckReport(
             findings=True,
-            ran={"prettier"},
+            ran={"gofmt"},
             failed={"biome"},
         ),
     ]
 
     report = check_paths(
-        ["src/example.py", Path("README.md")],
+        ["src/example.py", Path("main.go")],
         project_root=project_root,
         fix=True,
     )
 
     assert report == CheckReport(
         findings=True,
-        ran={"ruff", "prettier"},
+        ran={"gofmt", "ruff"},
         skipped={"pyrefly"},
         failed={"biome"},
     )
     assert mock_check_path.call_args_list == [
         call(Path("src/example.py"), project_root, fix=True),
-        call(Path("README.md"), project_root, fix=True),
+        call(Path("main.go"), project_root, fix=True),
     ]
 
 
@@ -1906,7 +1906,7 @@ def test_check_reports_partially_skipped_tools(
 def test_check_does_not_report_inapplicable_tools(
     mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
 ) -> None:
-    """A tool with no trigger file was never wanted, so it was not skipped."""
+    """A tool that owns no requested file is not reported as skipped."""
     mock_which.side_effect = lambda x: x if x in ("ruff", "pyrefly") else None
     mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
 
@@ -1919,9 +1919,8 @@ def test_check_does_not_report_inapplicable_tools(
 
     assert result.exit_code == 0
     output = result.stdout + result.stderr
-    # No biome.json or .prettierrc here, so neither is a skipped tool
+    # Neither tool owns Python, so neither is a skipped tool.
     assert "biome" not in output
-    assert "prettier" not in output
 
 
 @patch("shutil.which")
@@ -1969,7 +1968,6 @@ def test_check_runs_biome_without_a_project_config(
     assert result.exit_code == 0
     called = [call.args[0] for call in mock_run.call_args_list]
     assert any(command[0] == "biome" for command in called)
-    assert all("prettier" not in command for command in called)
     config_path = str(_bundled_config("biome"))
     biome_commands = [command for command in called if command[0] == "biome"]
     assert biome_commands
@@ -1979,18 +1977,19 @@ def test_check_runs_biome_without_a_project_config(
     )
 
 
-@pytest.mark.parametrize("extension", (".md", ".yml", ".yaml", ".scss"))
+@pytest.mark.parametrize(
+    "extension", (".md", ".yml", ".yaml", ".scss", ".jsonl")
+)
 @patch("shutil.which")
 @patch("subprocess.run")
-def test_check_runs_prettier_for_unsupported_biome_formats_without_config(
+def test_unsupported_formats_run_no_tool(
     mock_run: MagicMock,
     mock_which: MagicMock,
     tmp_path: Path,
     extension: str,
 ) -> None:
-    """Prettier covers its default formats without project configuration."""
+    """Unsupported document formats run no tool."""
     mock_which.side_effect = lambda name: name
-    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
 
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path):
@@ -1999,66 +1998,191 @@ def test_check_runs_prettier_for_unsupported_biome_formats_without_config(
         result = runner.invoke(cli, ["check", f"document{extension}"])
 
     assert result.exit_code == 0
-    commands = [invocation.args[0] for invocation in mock_run.call_args_list]
-    assert len(commands) == 1
-    assert commands[0][0] == "prettier"
-
-
-def test_prettier_uses_google_markdown_defaults(tmp_path: Path) -> None:
-    """CLI defaults wrap Markdown while deferring to project configuration."""
-    tools = {
-        tool["name"]: tool
-        for tool in _get_tool_definitions(Path("document.md"), tmp_path)
-    }
-
-    for command_name in ("check_format", "format"):
-        command = tools["prettier"][command_name]
-        assert "--print-width=80" in command
-        assert "--prose-wrap=always" in command
-        assert "--config-precedence=prefer-file" in command
+    assert "nothing was checked" in result.stderr
+    mock_run.assert_not_called()
 
 
 @patch("shutil.which")
 @patch("subprocess.run")
-def test_check_runs_prettier_for_configless_markdown_directory(
+def test_mixed_directory_scopes_biome_to_owned_files(
     mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
 ) -> None:
-    """Default applicability also works when checking a directory."""
+    """Biome receives its files, never an unrestricted mixed-format tree."""
     mock_which.side_effect = lambda name: name
     mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
 
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path):
-        Path("docs").mkdir()
-        Path("docs/guide.md").touch()
+        Path("project").mkdir()
+        Path("project/README.md").touch()
+        Path("project/data.json").touch()
+        Path("project/script.js").touch()
 
-        result = runner.invoke(cli, ["check", "docs"])
+        result = runner.invoke(cli, ["check", "project"])
 
     assert result.exit_code == 0
     commands = [invocation.args[0] for invocation in mock_run.call_args_list]
-    assert len(commands) == 1
-    assert commands[0][0] == "prettier"
+    biome_commands = [command for command in commands if command[0] == "biome"]
+    assert len(biome_commands) == 2
+    assert all(
+        command[-2:] == ["project/data.json", "project/script.js"]
+        for command in biome_commands
+    )
+    assert all("project" not in command for command in commands)
 
 
 @patch("shutil.which")
 @patch("subprocess.run")
-def test_prettier_project_config_opts_in_javascript(
+def test_direct_files_and_directory_have_the_same_formatter_owners(
     mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
 ) -> None:
-    """A project configuration retains Prettier's existing broad coverage."""
+    """Path shape changes tool targets, not extension ownership."""
     mock_which.side_effect = lambda name: name
     mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
 
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path):
-        Path(".prettierrc").touch()
-        Path("script.js").touch()
+        Path("project").mkdir()
+        paths = (
+            Path("project/README.md"),
+            Path("project/data.json"),
+            Path("project/script.js"),
+        )
+        for path in paths:
+            path.touch()
 
-        result = runner.invoke(cli, ["check", "script.js"])
+        directory_result = runner.invoke(cli, ["check", "project"])
+        directory_owners = {
+            invocation.args[0][0] for invocation in mock_run.call_args_list
+        }
+        mock_run.reset_mock()
+        file_result = runner.invoke(
+            cli, ["check", *(str(path) for path in paths)]
+        )
+        file_owners = {
+            invocation.args[0][0] for invocation in mock_run.call_args_list
+        }
+
+    assert directory_result.exit_code == 0
+    assert file_result.exit_code == 0
+    assert directory_owners == file_owners == {"biome"}
+
+
+@pytest.mark.parametrize("fix", (False, True))
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_configless_go_uses_gofmt_for_check_and_fix(
+    mock_run: MagicMock,
+    mock_which: MagicMock,
+    tmp_path: Path,
+    fix: bool,
+) -> None:
+    """Standalone Go files use symmetric gofmt commands without go.mod."""
+    mock_which.side_effect = lambda name: name if name == "gofmt" else None
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("main.go").touch()
+        arguments = ["check", "main.go"]
+        if fix:
+            arguments.append("--fix")
+
+        result = runner.invoke(cli, arguments)
 
     assert result.exit_code == 0
-    commands = [invocation.args[0][0] for invocation in mock_run.call_args_list]
-    assert commands.count("prettier") == 1
+    expected = ["gofmt", "-w" if fix else "-l", "main.go"]
+    assert [invocation.args[0] for invocation in mock_run.call_args_list] == [
+        expected
+    ]
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_gofmt_scopes_a_directory_to_go_files(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """Gofmt receives recursive Go files instead of an invalid directory."""
+    mock_which.side_effect = lambda name: name if name == "gofmt" else None
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("src/nested").mkdir(parents=True)
+        Path("src/main.go").touch()
+        Path("src/nested/helper.go").touch()
+        Path("src/notes.txt").touch()
+
+        result = runner.invoke(cli, ["check", "src"])
+
+    assert result.exit_code == 0
+    assert [invocation.args[0] for invocation in mock_run.call_args_list] == [
+        ["gofmt", "-l", "src/main.go", "src/nested/helper.go"]
+    ]
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_gofmt_fix_failure_is_reported(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """A failed gofmt write cannot be reported as a clean fix."""
+    mock_which.side_effect = lambda name: name if name == "gofmt" else None
+    mock_run.return_value = MagicMock(
+        returncode=1, stdout="", stderr="invalid Go syntax"
+    )
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("main.go").touch()
+
+        result = runner.invoke(cli, ["check", "main.go", "--fix"])
+
+    assert result.exit_code == 1
+    assert "gofmt formatting findings" in result.output
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_large_biome_directory_uses_bounded_commands(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """Explicit file scoping cannot exceed a conservative argv budget."""
+    mock_which.side_effect = lambda name: name if name == "biome" else None
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("src").mkdir()
+        for index in range(600):
+            name = f"{index:04d}_{'x' * 180}.js"
+            Path("src", name).touch()
+
+        result = runner.invoke(cli, ["check", "src"])
+
+    assert result.exit_code == 0
+    commands = [invocation.args[0] for invocation in mock_run.call_args_list]
+    assert len(commands) > 2
+    assert all(
+        sum(len(argument) + 1 for argument in command) < 20_000
+        for command in commands
+    )
+
+
+@patch("shutil.which", return_value=None)
+def test_missing_gofmt_is_reported_for_configless_go(
+    mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """A missing gofmt leaves standalone Go explicitly unverified."""
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("main.go").touch()
+
+        result = runner.invoke(cli, ["check", "main.go"])
+
+    assert result.exit_code == 1
+    assert "gofmt" in result.stderr
+    assert "nothing was verified" in result.stderr
 
 
 @patch("shutil.which")
@@ -2264,19 +2388,17 @@ def test_node_tools_prefer_a_project_local_install(tmp_path: Path) -> None:
     """A project's own version beats whatever npx would fetch."""
     local = tmp_path / "node_modules" / ".bin"
     local.mkdir(parents=True)
-    for name in ("biome", "prettier"):
-        binary = local / name
-        binary.write_text("#!/bin/sh\n")
-        binary.chmod(0o755)
+    binary = local / "biome"
+    binary.write_text("#!/bin/sh\n")
+    binary.chmod(0o755)
 
     tools = {
         t["name"]: t for t in _get_tool_definitions(Path("f.ts"), tmp_path)
     }
 
-    for name in ("biome", "prettier"):
-        cmd = tools[name].get("check") or tools[name]["check_format"]
-        assert cmd[0] == str(local / name)
-        assert "npx" not in cmd
+    cmd = tools["biome"]["check"]
+    assert cmd[0] == str(binary)
+    assert "npx" not in cmd
 
 
 def test_node_tools_fall_back_to_npx(tmp_path: Path) -> None:
@@ -2285,9 +2407,9 @@ def test_node_tools_fall_back_to_npx(tmp_path: Path) -> None:
         t["name"]: t for t in _get_tool_definitions(Path("f.ts"), tmp_path)
     }
 
-    cmd = tools["prettier"]["check_format"]
+    cmd = tools["biome"]["check"]
     assert cmd[:2] == ["npx", "-y"]
-    assert cmd[2].startswith("prettier@")
+    assert cmd[2].startswith("@biomejs/biome@")
 
 
 def test_python_tools_fall_back_to_a_floored_runner(tmp_path: Path) -> None:
@@ -2332,7 +2454,6 @@ def test_a_local_file_that_cannot_run_is_not_chosen(tmp_path: Path) -> None:
     node = tmp_path / "node_modules" / ".bin"
     node.mkdir(parents=True)
     (node / "biome").touch(mode=0o644)
-    (node / "prettier").mkdir()
 
     with patch("shutil.which", return_value=None):
         tools = {
@@ -2340,7 +2461,6 @@ def test_a_local_file_that_cannot_run_is_not_chosen(tmp_path: Path) -> None:
         }
 
     assert tools["biome"]["check"][0] == "npx"
-    assert tools["prettier"]["check_format"][0] == "npx"
 
 
 def test_resolution_ignores_a_project_virtualenv(tmp_path: Path) -> None:
