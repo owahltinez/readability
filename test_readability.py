@@ -1979,6 +1979,88 @@ def test_check_runs_biome_without_a_project_config(
     )
 
 
+@pytest.mark.parametrize("extension", (".md", ".yml", ".yaml", ".scss"))
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_check_runs_prettier_for_unsupported_biome_formats_without_config(
+    mock_run: MagicMock,
+    mock_which: MagicMock,
+    tmp_path: Path,
+    extension: str,
+) -> None:
+    """Prettier covers its default formats without project configuration."""
+    mock_which.side_effect = lambda name: name
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path(f"document{extension}").touch()
+
+        result = runner.invoke(cli, ["check", f"document{extension}"])
+
+    assert result.exit_code == 0
+    commands = [invocation.args[0] for invocation in mock_run.call_args_list]
+    assert len(commands) == 1
+    assert commands[0][0] == "prettier"
+
+
+def test_prettier_uses_google_markdown_defaults(tmp_path: Path) -> None:
+    """CLI defaults wrap Markdown while deferring to project configuration."""
+    tools = {
+        tool["name"]: tool
+        for tool in _get_tool_definitions(Path("document.md"), tmp_path)
+    }
+
+    for command_name in ("check_format", "format"):
+        command = tools["prettier"][command_name]
+        assert "--print-width=80" in command
+        assert "--prose-wrap=always" in command
+        assert "--config-precedence=prefer-file" in command
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_check_runs_prettier_for_configless_markdown_directory(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """Default applicability also works when checking a directory."""
+    mock_which.side_effect = lambda name: name
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("docs").mkdir()
+        Path("docs/guide.md").touch()
+
+        result = runner.invoke(cli, ["check", "docs"])
+
+    assert result.exit_code == 0
+    commands = [invocation.args[0] for invocation in mock_run.call_args_list]
+    assert len(commands) == 1
+    assert commands[0][0] == "prettier"
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_prettier_project_config_opts_in_javascript(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """A project configuration retains Prettier's existing broad coverage."""
+    mock_which.side_effect = lambda name: name
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path(".prettierrc").touch()
+        Path("script.js").touch()
+
+        result = runner.invoke(cli, ["check", "script.js"])
+
+    assert result.exit_code == 0
+    commands = [invocation.args[0][0] for invocation in mock_run.call_args_list]
+    assert commands.count("prettier") == 1
+
+
 @patch("shutil.which")
 @patch("subprocess.run")
 def test_bundled_tools_do_not_claim_an_unsupported_directory(
@@ -1990,7 +2072,7 @@ def test_bundled_tools_do_not_claim_an_unsupported_directory(
 
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path):
-        Path("notes.md").touch()
+        Path("notes.txt").touch()
 
         result = runner.invoke(cli, ["check", "."])
 
@@ -2024,7 +2106,7 @@ def test_biome_zero_file_result_is_not_reported_as_clean(
         Path(".gitignore").write_text("node_modules/\n")
         Path("node_modules/example").mkdir(parents=True)
         Path("node_modules/example/index.js").touch()
-        Path("README.md").touch()
+        Path("README.txt").touch()
 
         for extra_args, expected_calls in (([], 2), (["--fix"], 3)):
             mock_run.side_effect = (
