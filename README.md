@@ -9,9 +9,9 @@ quick access to style conventions without browsing HTML pages.
 ## Features
 
 - **Linting & Formatting**: A `check` command that automatically detects and
-  runs relevant tools (Ruff, Pyrefly, Biome, Prettier, gofmt) for your project.
-- **Sensible Defaults**: Google-style defaults for Ruff, Pyrefly, Biome, and
-  Prettier are used automatically when a project does not define its own.
+  runs relevant tools (Ruff, Pyrefly, Biome, and gofmt) for your project.
+- **Predictable Ownership**: Every supported format has fixed tools, so
+  configuration customizes checks without changing which formatter runs.
 - **Style Guides**: A `guide` command that fetches the latest Google style
   guides (Python, Shell, C++, Java, JS/TS, Go, etc.) converted to Markdown, and
   outlines, addresses, and searches them by section rather than serving 200 KB
@@ -64,8 +64,8 @@ uv run readability sync
 ## Checking and Formatting
 
 The `check` command identifies and runs relevant linting and formatting tools
-based on file extensions and the presence of configuration files (triggers) in
-your project root:
+solely from file extensions. Configuration can customize the assigned tools,
+but cannot opt another tool into a format:
 
 ```bash
 # Run checks on the current directory
@@ -78,21 +78,22 @@ readability check src/ tests/ main.py
 readability check . --fix
 ```
 
-### Supported Tools
+### Supported Formats
 
-| Tool         | Supported Extensions                                                                    | Config Needed                     | Fetched By |
-| ------------ | --------------------------------------------------------------------------------------- | --------------------------------- | ---------- |
-| **Ruff**     | `.py`                                                                                   | none, bundled                     | `uvx`      |
-| **Pyrefly**  | `.py`                                                                                   | none, bundled                     | `uvx`      |
-| **Biome**    | `.js`, `.ts`, `.jsx`, `.tsx`, `.json`, `.jsonc`, `.css`, `.html`                        | none, bundled                     | `npx`      |
-| **Prettier** | `.js`, `.ts`, `.jsx`, `.tsx`, `.json`, `.css`, `.scss`, `.html`, `.md`, `.yml`, `.yaml` | none for Markdown, YAML, and SCSS | `npx`      |
-| **gofmt**    | `.go`                                                                                   | `go.mod`                          | —          |
+| Formats                                                          | Owners                                  | Project configuration                 |
+| ---------------------------------------------------------------- | --------------------------------------- | ------------------------------------- |
+| `.py`                                                            | Ruff lint/format; Pyrefly type checking | Ruff and Pyrefly native configuration |
+| `.js`, `.jsx`, `.ts`, `.tsx`, `.json`, `.jsonc`, `.css`, `.html` | Biome                                   | `biome.json` or `biome.jsonc`         |
+| `.go`                                                            | gofmt                                   | None                                  |
 
-**You do not need to install any of these.** Each is resolved in order: a
-project-local install (`node_modules/.bin`, `.venv/bin`) first, then whatever is
-on your `PATH`, and only then fetched by `uvx` or `npx`. The runners cache what
-they download, so the fetch happens once per machine and later runs are served
-from disk and work offline.
+Markdown, YAML, SCSS, JSONL, and extensions not listed above are unsupported.
+An unsupported-only path reports that nothing was checked and exits
+successfully.
+
+Biome first checks a project's `node_modules/.bin`. Ruff, Pyrefly, and Biome
+then use `PATH`, followed by `uvx` for the Python tools or `npx` for Biome. The
+runners cache downloads, so subsequent runs work offline. Gofmt ships with Go
+and must be available on `PATH`.
 
 That keeps this package at ~4 MB rather than the ~54 MB it would take to carry
 Ruff and Pyrefly itself — a cost that would fall on everyone using only `guide`.
@@ -109,18 +110,17 @@ over a fetched one.
 Set `UV_OFFLINE=1` to forbid fetching. A tool that then cannot be reached fails
 the run rather than passing it.
 
-Ruff, Pyrefly, and Biome ship with bundled configurations, so they run on any
-file they handle without the project arranging anything. Prettier does the same
-for Markdown, YAML, and SCSS; a Prettier configuration opts its overlapping web
-formats into Prettier too. Gofmt waits for a `go.mod` file.
+Ruff, Pyrefly, and Biome ship with bundled configurations, so they run on every
+file they own without project setup. Gofmt runs on `.go` files even when there
+is no `go.mod`.
 
 A tool that could not be reached at all is never skipped quietly:
 
 ```bash
 # Some tools ran, so the result stands, but coverage was partial
 $ readability check src/
-Warning: not installed, so not run: prettier.
-No findings in 1 path(s) (ruff, pyrefly).
+Warning: not installed, so not run: pyrefly.
+No findings in 1 path(s) (ruff).
 
 # Nothing ran, so there is no result to report
 $ readability check src/
@@ -157,22 +157,23 @@ raises `FileNotFoundError` rather than being misreported as a finding. Relative
 paths remain relative to the process working directory; `project_root` controls
 configuration discovery only.
 
-### Default Configurations
+### Configuring Formats
 
 Ruff and Pyrefly defaults follow the
 [Google Python style guide](https://google.github.io/styleguide/pyguide.html):
 80-column lines, Google docstrings, import ordering, and full type checking. The
 Biome default applies the 80-column lines and two-space indentation of the
 [Google JavaScript style guide](https://google.github.io/styleguide/jsguide.html)
-and enables Biome's recommended lint rules. Prettier wraps prose at 80 columns,
-following the
-[Google Markdown style guide](https://google.github.io/styleguide/docguide/style.html#character-line-limit).
-These defaults apply only when the project does not define its own
-configuration. To override them, add a `[tool.ruff]` or `[tool.pyrefly]` section
-to your `pyproject.toml`, or a dedicated `ruff.toml`, `pyrefly.toml`,
-`biome.json`, `biome.jsonc`, or Prettier configuration — any project-level
-configuration takes full precedence. The bundled Biome file requires Biome 2.5
-or later, matching the version floor used by the fallback runner.
+and enables Biome's recommended lint rules. Project `biome.json` and
+`biome.jsonc` files replace those bundled defaults for Biome-owned formats.
+
+For Python, add `[tool.ruff]` or `[tool.pyrefly]` to `pyproject.toml`, or use
+`ruff.toml`, `.ruff.toml`, or `pyrefly.toml`. Ruff, Pyrefly, and Biome load
+their native project configurations in place of bundled defaults. Readability
+does not interpret EditorConfig itself; a canonical tool such as Biome may opt
+into it through that tool's native configuration. Gofmt has no project settings.
+The bundled Biome file requires Biome 2.5 or later, matching the fallback
+runner's version floor.
 
 ## Style Guides
 

@@ -1171,8 +1171,8 @@ class CheckReport:
             never started belongs in failed, and a tool that explicitly
             reported processing no files is not recorded as having run.
         skipped: Names of the tools that were applicable but not installed.
-            Tools with no trigger file are in neither set: they were never
-            wanted, so passing without them is not a gap in coverage.
+            Tools that own no requested file are in neither set, so passing
+            without them is not a gap in coverage.
         failed: Names of the tools that started and could not finish, by
             failing to exec or by running past the timeout.
         unverified_paths: Requested paths for which no tool processed a file.
@@ -1249,7 +1249,7 @@ def _check_path(
 
     Args:
         path: The path (file or directory) to check.
-        project_root: The root of the project for trigger file discovery.
+        project_root: The root used for native tool configuration discovery.
         fix: Whether to apply automatic fixes.
 
     Returns:
@@ -1260,7 +1260,7 @@ def _check_path(
     # Iterate through all supported tool definitions
     report = CheckReport()
     for tool in _get_tool_definitions(path, project_root):
-        if not _should_run_tool(tool, path, project_root):
+        if not _should_run_tool(tool, path):
             continue
 
         # A tool that is wanted but absent leaves a hole in the coverage,
@@ -1275,42 +1275,19 @@ def _check_path(
     return report
 
 
-def _should_run_tool(
-    tool: dict[str, Any], path: Path, project_root: Path
-) -> bool:
-    """Determine if a tool should run based on triggers and extensions.
+def _should_run_tool(tool: dict[str, Any], path: Path) -> bool:
+    """Determine if a tool owns any files under the requested path.
 
     Args:
         tool: The tool configuration dictionary.
         path: The path being checked.
-        project_root: The project root directory.
 
     Returns:
         True if the tool should run, False otherwise.
     """
-    # Project configuration opts a tool into every extension it supports;
-    # otherwise it handles only the formats with safe readability defaults.
-    has_project_config = any(
-        (project_root / t).exists() for t in tool["trigger"]
-    )
-    extensions = (
-        tool["extensions"] if has_project_config else tool["default_extensions"]
-    )
-
-    # Files must match one of the tool's supported extensions.
-    if path.is_file():
-        return path.suffix in extensions
-
-    if not extensions:
-        return False
-
-    # A directory trigger alone is not evidence that the tool checked a file.
-    # Several tools deliberately exit zero when nothing matches, which would
-    # otherwise turn an unsupported-only tree into a reported clean result.
-    return any(
-        candidate.is_file() and candidate.suffix in extensions
-        for candidate in path.rglob("*")
-    )
+    if "targets" in tool:
+        return bool(tool["targets"])
+    return bool(_matching_paths(path, tool["extensions"]))
 
 
 def _tool_is_installed(tool_name: str, tool_config: dict[str, Any]) -> bool:
@@ -1425,8 +1402,83 @@ TOOL_RUNNERS = {
     "ruff": ["uvx", "ruff>=0.15"],
     "pyrefly": ["uvx", "pyrefly>=1.2"],
     "biome": ["npx", "-y", "@biomejs/biome@>=2.5"],
-    "prettier": ["npx", "-y", "prettier@>=3.9"],
 }
+
+# Each supported extension has one formatter owner. Pyrefly additionally checks
+# Python types, but project configuration never changes tool selection.
+TOOL_EXTENSIONS = {
+    "ruff": (".py",),
+    "pyrefly": (".py",),
+    "biome": (
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".json",
+        ".jsonc",
+        ".css",
+        ".html",
+    ),
+    "gofmt": (".go",),
+}
+
+# Leave headroom below common operating-system argv limits. Commands with many
+# explicit targets are split before execution so directory checks stay scoped
+# without failing on large trees.
+MAX_COMMAND_BYTES = 16 * 1024
+
+
+def _matching_paths(path: Path, extensions: Sequence[str]) -> list[str]:
+    """Return files under a requested path owned by one tool.
+
+    Args:
+        path: Requested file or directory.
+        extensions: Extensions canonically assigned to the tool.
+
+    Returns:
+        The requested file, or sorted matching files below the directory.
+    """
+    if path.is_file():
+        return [str(path)] if path.suffix in extensions else []
+
+    return sorted(
+        str(candidate)
+        for candidate in path.rglob("*")
+        if candidate.is_file() and candidate.suffix in extensions
+    )
+
+
+def _command_batches(cmd: list[str], target_count: int) -> list[list[str]]:
+    """Split trailing file targets into bounded commands.
+
+    Args:
+        cmd: Complete command with file targets at the end.
+        target_count: Number of trailing arguments that are file targets.
+
+    Returns:
+        One or more commands under the conservative argv budget.
+    """
+    if target_count == 0:
+        return [cmd]
+
+    prefix = cmd[:-target_count]
+    targets = cmd[-target_count:]
+    prefix_size = sum(len(argument.encode()) + 1 for argument in prefix)
+    batches: list[list[str]] = []
+    batch: list[str] = []
+    batch_size = prefix_size
+
+    for target in targets:
+        target_size = len(target.encode()) + 1
+        if batch and batch_size + target_size > MAX_COMMAND_BYTES:
+            batches.append([*prefix, *batch])
+            batch = []
+            batch_size = prefix_size
+        batch.append(target)
+        batch_size += target_size
+
+    batches.append([*prefix, *batch])
+    return batches
 
 
 def _tool_command(binary: str, project_root: Path) -> list[str]:
@@ -1468,7 +1520,7 @@ def _tool_command(binary: str, project_root: Path) -> list[str]:
 def _get_tool_definitions(
     path: Path, project_root: Path
 ) -> list[dict[str, Any]]:
-    """Define supported tools with their triggers, extensions, and commands.
+    """Define supported tools with their extensions and commands.
 
     Args:
         path: The path being checked.
@@ -1517,12 +1569,8 @@ def _get_tool_definitions(
     ruff = _tool_command("ruff", project_root)
     pyrefly = _tool_command("pyrefly", project_root)
     biome = _tool_command("biome", project_root)
-    prettier = _tool_command("prettier", project_root)
-    prettier_defaults = [
-        "--print-width=80",
-        "--prose-wrap=always",
-        "--config-precedence=prefer-file",
-    ]
+    biome_targets = _matching_paths(path, TOOL_EXTENSIONS["biome"])
+    gofmt_targets = _matching_paths(path, TOOL_EXTENSIONS["gofmt"])
 
     return [
         {
@@ -1557,9 +1605,7 @@ def _get_tool_definitions(
                 *ruff_config,
                 path_str,
             ],
-            "trigger": ["pyproject.toml", "ruff.toml", ".ruff.toml"],
-            "extensions": [".py"],
-            "default_extensions": [".py"],
+            "extensions": TOOL_EXTENSIONS["ruff"],
         },
         {
             # Type checker only: it reports findings but cannot fix or format
@@ -1571,9 +1617,7 @@ def _get_tool_definitions(
                 *pyrefly_targets,
             ],
             **({"cwd": project_root} if pyrefly_project_mode else {}),
-            "trigger": ["pyproject.toml", "pyrefly.toml"],
-            "extensions": [".py"],
-            "default_extensions": [".py"],
+            "extensions": TOOL_EXTENSIONS["pyrefly"],
         },
         {
             "name": "biome",
@@ -1582,14 +1626,14 @@ def _get_tool_definitions(
                 "lint",
                 *biome_config,
                 "--no-errors-on-unmatched",
-                path_str,
+                *biome_targets,
             ],
             "check_format": [
                 *biome,
                 "format",
                 *biome_config,
                 "--no-errors-on-unmatched",
-                path_str,
+                *biome_targets,
             ],
             "fix": [
                 *biome,
@@ -1597,7 +1641,7 @@ def _get_tool_definitions(
                 "--write",
                 *biome_config,
                 "--no-errors-on-unmatched",
-                path_str,
+                *biome_targets,
             ],
             "format": [
                 *biome,
@@ -1605,77 +1649,17 @@ def _get_tool_definitions(
                 "--write",
                 *biome_config,
                 "--no-errors-on-unmatched",
-                path_str,
+                *biome_targets,
             ],
-            "trigger": ["biome.json", "biome.jsonc"],
-            "extensions": [
-                ".js",
-                ".ts",
-                ".jsx",
-                ".tsx",
-                ".json",
-                ".jsonc",
-                ".css",
-                ".html",
-            ],
-            "default_extensions": [
-                ".js",
-                ".ts",
-                ".jsx",
-                ".tsx",
-                ".json",
-                ".jsonc",
-                ".css",
-                ".html",
-            ],
+            "extensions": TOOL_EXTENSIONS["biome"],
+            "targets": biome_targets,
         },
         {
-            "name": "prettier",
-            "check_format": [
-                *prettier,
-                "--check",
-                *prettier_defaults,
-                "--no-error-on-unmatched-pattern",
-                path_str,
-            ],
-            "format": [
-                *prettier,
-                "--write",
-                *prettier_defaults,
-                "--no-error-on-unmatched-pattern",
-                path_str,
-            ],
-            "trigger": [
-                ".prettierrc",
-                ".prettierrc.json",
-                ".prettierrc.yml",
-                ".prettierrc.yaml",
-                ".prettierrc.js",
-                "prettier.config.js",
-                "prettier.config.cjs",
-            ],
-            "extensions": [
-                ".js",
-                ".ts",
-                ".jsx",
-                ".tsx",
-                ".json",
-                ".css",
-                ".scss",
-                ".html",
-                ".md",
-                ".yml",
-                ".yaml",
-            ],
-            "default_extensions": [".md", ".yml", ".yaml", ".scss"],
-        },
-        {
-            "name": "go fmt",
-            "check_format": ["gofmt", "-l", path_str],
-            "format": ["go", "fmt", path_str],
-            "trigger": ["go.mod"],
-            "extensions": [".go"],
-            "default_extensions": [],
+            "name": "gofmt",
+            "check_format": ["gofmt", "-l", *gofmt_targets],
+            "format": ["gofmt", "-w", *gofmt_targets],
+            "extensions": TOOL_EXTENSIONS["gofmt"],
+            "targets": gofmt_targets,
         },
     ]
 
@@ -1702,6 +1686,7 @@ def _run_tool(
 
     report = CheckReport()
     cwd = tool_config.get("cwd")
+    target_count = len(tool_config.get("targets", ()))
     try:
         if fix:
             # Formatters rewrite files, fixers apply what they can. Both
@@ -1710,33 +1695,51 @@ def _run_tool(
             # and report what they could not deal with.
             for phase in ("format", "fix"):
                 if phase in tool_config:
-                    result = _capture_tool_command(tool_config[phase], cwd=cwd)
-                    if _tool_checked_files(tool_name, result):
-                        report.ran.add(tool_name)
+                    for command in _command_batches(
+                        tool_config[phase], target_count
+                    ):
+                        result = _capture_tool_command(command, cwd=cwd)
+                        if _tool_checked_files(tool_name, result):
+                            report.ran.add(tool_name)
+                        if result.returncode != 0:
+                            report.findings = True
+                            finding_type = (
+                                "formatting findings"
+                                if phase == "format"
+                                else "findings"
+                            )
+                            click.echo(
+                                f"--- {tool_name} {finding_type} ---\n"
+                                f"{result.stdout}\n{result.stderr}"
+                            )
         elif "check_format" in tool_config:
-            result = _capture_tool_command(tool_config["check_format"], cwd=cwd)
-            if _tool_checked_files(tool_name, result):
-                report.ran.add(tool_name)
-            # gofmt reports by naming files rather than by exit code
-            if result.returncode != 0 or (
-                tool_name == "go fmt" and result.stdout.strip()
+            for command in _command_batches(
+                tool_config["check_format"], target_count
             ):
-                report.findings = True
-                click.echo(
-                    f"--- {tool_name} formatting findings ---\n"
-                    f"{result.stdout}\n{result.stderr}"
-                )
+                result = _capture_tool_command(command, cwd=cwd)
+                if _tool_checked_files(tool_name, result):
+                    report.ran.add(tool_name)
+                # gofmt reports by naming files rather than by exit code
+                if result.returncode != 0 or (
+                    tool_name == "gofmt" and result.stdout.strip()
+                ):
+                    report.findings = True
+                    click.echo(
+                        f"--- {tool_name} formatting findings ---\n"
+                        f"{result.stdout}\n{result.stderr}"
+                    )
 
         if "check" in tool_config:
-            result = _capture_tool_command(tool_config["check"], cwd=cwd)
-            if _tool_checked_files(tool_name, result):
-                report.ran.add(tool_name)
-            if result.returncode != 0:
-                report.findings = True
-                click.echo(
-                    f"--- {tool_name} findings ---\n"
-                    f"{result.stdout}\n{result.stderr}"
-                )
+            for command in _command_batches(tool_config["check"], target_count):
+                result = _capture_tool_command(command, cwd=cwd)
+                if _tool_checked_files(tool_name, result):
+                    report.ran.add(tool_name)
+                if result.returncode != 0:
+                    report.findings = True
+                    click.echo(
+                        f"--- {tool_name} findings ---\n"
+                        f"{result.stdout}\n{result.stderr}"
+                    )
 
     # Failing to start, or running past the timeout, means this tool checked
     # nothing. Whatever it managed before that stays in ran.
