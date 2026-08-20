@@ -143,7 +143,7 @@ or exit-code decisions:
 ```python
 from pathlib import Path
 
-from readability import check_paths
+from readability.checking import check_paths
 
 report = check_paths(["src", Path("tests")], project_root=Path.cwd())
 if report.findings or report.failed or not report.ran:
@@ -325,14 +325,15 @@ readability sync
 
 ### Offline Mode
 
-The tool stores local copies of the style guides in the `guides/` directory and
+The tool stores local copies of the style guides in the
+`readability/guides/` directory and
 the `guide` command uses these local files when they exist. The bundled copies
 are automatically synchronized weekly from the official
 [Google Style Guides](https://google.github.io/styleguide/) repository via
 GitHub Actions, and you can refresh your local cache at any time with the `sync`
 command.
 
-You can override the default `guides/` directory by setting the
+You can override the default guide directory by setting the
 `READABILITY_CACHE` environment variable. This is useful if you want to store
 the guides in a specific location or share them across different installations:
 

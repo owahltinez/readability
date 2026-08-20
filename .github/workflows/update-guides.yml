@@ -30,4 +30,4 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "chore: update style guides [skip ci]"
-          file_pattern: "guides/*.md"
+          file_pattern: "readability/guides/*.md"

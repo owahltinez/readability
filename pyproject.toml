@@ -1,6 +1,6 @@
 [project]
 name = "readability-cli"
-version = "0.8.6"
+version = "0.9.0"
 description = "A CLI to lint, format, and type-check code with Google-style defaults, and pull Google style guides in markdown format."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -16,17 +16,13 @@ Homepage = "https://github.com/owahltinez/readability"
 Repository = "https://github.com/owahltinez/readability"
 
 [project.scripts]
-readability = "readability:main"
+readability = "readability.cli:main"
 
 [tool.uv]
 package = true
 
 [tool.hatch.build.targets.wheel]
-include = [
-    "/readability.py",
-    "/guides",
-    "/configs",
-]
+packages = ["readability"]
 
 [build-system]
 requires = ["hatchling"]
@@ -54,3 +50,4 @@ convention = "google"
 [tool.ruff.lint.per-file-ignores]
 "test_*.py" = ["D"]
 "*_test.py" = ["D"]
+"readability/__init__.py" = ["D104"]
