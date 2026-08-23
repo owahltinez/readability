@@ -75,13 +75,10 @@ def check_paths(
     Args:
         paths: Files or directories to check, as strings or paths. Relative
             paths are interpreted from the current working directory.
-        project_root: Root that bounds configuration discovery, locates
-            project-local tool installs, and anchors ignore-file discovery.
-            Bounding matters for callers scoring against a fixed baseline: the
-            same files get the same verdict wherever the tree sits, because
-            configuration above this root is not read. Defaults to the
-            repository the process is in, falling back to the working
-            directory. It does not rebase paths.
+        project_root: Bounds config discovery, so the same files get the
+            same verdict wherever the tree sits, and locates tool installs
+            and ignore files. Defaults to the repository the process is in.
+            It does not rebase paths.
         fix: Whether to apply automatic fixes.
 
     Returns:
@@ -117,8 +114,8 @@ def _check_path(
 
     Args:
         path: The path (file or directory) to check.
-        project_root: The root bounding configuration discovery, locating
-            project-local tool installs, and anchoring ignore-file discovery.
+        project_root: Bounds config discovery, locates tool installs and
+            ignore files.
         fix: Whether to apply automatic fixes.
 
     Returns:
@@ -132,8 +129,7 @@ def _check_path(
         if not _should_run_tool(tool, path):
             continue
 
-        # A tool that is wanted but absent leaves a hole in the coverage,
-        # which is not the same as a clean result
+        # A wanted but absent tool is a hole in coverage, not a clean result
         if not _tool_is_installed(tool):
             report.skipped.add(tool.name)
             continue
@@ -165,10 +161,7 @@ def _run_tool(
     target_count = len(tool.targets or ())
     try:
         if fix:
-            # Formatters rewrite files, fixers apply what they can. Both
-            # exit non-zero when something is left over, which is a finding
-            # rather than a failure, so the check below still gets to run
-            # and report what they could not deal with.
+            # Leftovers exit non-zero, which is a finding rather than a failure
             for phase in ("format", "fix"):
                 configured_command = getattr(tool, phase)
                 if configured_command:
@@ -217,8 +210,7 @@ def _run_tool(
                         f"{result.stdout}\n{result.stderr}"
                     )
 
-    # Failing to start, or running past the timeout, means this tool checked
-    # nothing. Whatever it managed before that stays in ran.
+    # Never starting, or timing out, means this tool checked nothing
     except (subprocess.SubprocessError, OSError) as e:
         logger.warning("Could not run %s: %s", tool.name, e)
         report.failed.add(tool.name)
@@ -238,9 +230,7 @@ def _tool_checked_files(
     Returns:
         False when the tool explicitly reports that it processed no files.
     """
-    # Biome 2.x uses these summaries for an unmatched target. Ruff says so
-    # when a project's own excludes cover every file it was handed, which
-    # honouring project configuration made reachable.
+    # Biome says this for an unmatched target, Ruff when excludes cover them all
     zero_file_reports = {
         "biome": ("Checked 0 files", "Formatted 0 files"),
         "ruff": ("No Python files found",),

@@ -50,8 +50,7 @@ def _tool_is_installed(tool: ToolPlan) -> bool:
     Returns:
         True if the tool can be run.
     """
-    # Every command for a tool starts with the same executable, so any of
-    # them answers the question
+    # Every command for a tool starts with the same executable
     cmd = tool.format or tool.check or tool.fix or tool.check_format
     if not cmd:
         return False
@@ -87,8 +86,7 @@ def _has_project_config(
     Args:
         directory: The directory to inspect.
         config_files: Dedicated config filenames to look for (e.g. ruff.toml).
-        tool_name: The pyproject.toml [tool.<name>] section to look for, or
-            None for a tool that has no pyproject.toml representation.
+        tool_name: The pyproject.toml section, or None if it has none.
 
     Returns:
         True if the directory configures the tool, False otherwise.
@@ -97,8 +95,7 @@ def _has_project_config(
     if any((directory / f).exists() for f in config_files):
         return True
 
-    # Biome passes None: it has no pyproject.toml form, so a stray
-    # [tool.biome] section would otherwise suppress the bundled default.
+    # Biome has no pyproject form, so a stray [tool.biome] must not count
     if tool_name is None:
         return False
 
@@ -115,10 +112,7 @@ def _has_project_config(
 
 
 def _lexical_path(path: Path) -> Path:
-    """Make a path absolute without following symbolic links.
-
-    Resolving would search the link target's ancestors instead, disagreeing
-    with Ruff about a vendored directory that is a link.
+    """Make a path absolute without following links, as Ruff reads it.
 
     Args:
         path: The path to normalize.
@@ -130,11 +124,10 @@ def _lexical_path(path: Path) -> Path:
 
 
 def _repository_root(start: Path) -> Path:
-    """Find the repository the caller is standing in.
+    """Find the repository the caller is in, which bounds discovery.
 
-    Discovery is bounded by this, so it has to be the project: bounded at the
-    working directory, `cd pkg && readability check mod.py` would miss the
-    config the repository root declares, which Ruff reads.
+    Bounding at the working directory instead would miss the config the
+    repository root declares, which Ruff reads.
 
     Args:
         start: The directory to search upward from.
@@ -157,16 +150,14 @@ def _config_root(
 ) -> Path | None:
     """Find the nearest directory up to a boundary that configures a tool.
 
-    Walking up is what the tools do. Stopping at the boundary keeps the answer
-    from depending on what happens to sit above the project, which callers
-    scoring against a fixed baseline rely on.
+    Walking up is what the tools do; the boundary keeps the answer from
+    depending on whatever sits above the project.
 
     Args:
         path: The file or directory being checked.
         boundary: The outermost directory the search may consider.
         config_files: Dedicated config filenames the project may define.
-        tool_name: The pyproject.toml [tool.<name>] section, or None for a
-            tool that has no pyproject.toml representation.
+        tool_name: The pyproject.toml section, or None if it has none.
 
     Returns:
         The nearest configuring directory, or None if none does.
@@ -187,10 +178,7 @@ def _config_root(
 
 
 def _vcs_args(project_root: Path) -> list[str]:
-    """Point Biome at the project's ignore files when using a bundled config.
-
-    A config outside the project leaves Biome nothing to root ignore
-    discovery in, so it has to be told.
+    """Point Biome at the ignore files a config outside the project hides.
 
     Args:
         project_root: The directory holding the repository's ignore files.
@@ -214,10 +202,8 @@ def _config_groups(
 ) -> list[tuple[list[str], list[str]]]:
     """Group a tool's files by the configuration arguments they need.
 
-    A tool only needs telling which config to use when the file has none,
-    because it resolves its own hierarchy: one Ruff invocation over two
-    packages declaring different line lengths reports each against its own.
-    So the question is binary and two groups cover any tree.
+    A tool needs telling only when a file has no config, since it resolves
+    its own hierarchy, so the question is binary and two groups cover a tree.
 
     Args:
         targets: The files the tool owns, as strings.
@@ -226,8 +212,7 @@ def _config_groups(
 
     Returns:
         One (config arguments, targets) pair per non-empty group. Configured
-        files carry no config argument at all, which is what lets the tool
-        apply its own precedence.
+        files carry no config argument, letting the tool apply its own.
     """
     config_files, section, flag = CONFIG_SOURCES[tool]
     configured: list[str] = []
@@ -250,7 +235,7 @@ def _plan(
     config: Sequence[str],
     targets: Sequence[str],
 ) -> ToolPlan:
-    """Build one tool plan, every phase sharing the same config and targets.
+    """Build one tool plan, every phase sharing its config and targets.
 
     Args:
         tool: The tool's name, keying TOOL_PHASES and TOOL_EXTENSIONS.
@@ -277,30 +262,14 @@ def _plan(
     )
 
 
-# How to reach a tool nobody installed. Both runners cache what they fetch,
-# so the download happens once per machine and later runs are served from
-# disk and work offline, which is why this package carries no linters of its
-# own: vendoring ruff and pyrefly made it thirteen times larger, and charged
-# that to everyone using only `guide`.
-#
-# Floors, not ranges. A floor keeps a tool new enough to understand the
-# bundled configs; a ceiling would freeze whoever installed nothing at the
-# version shipped here and demand a release of this package to track every
-# release of theirs. Ruff alone has published seventeen minor series, one
-# roughly every six weeks, and the first ceiling written here was stale two
-# days later. Anyone who needs a fixed version installs it, and an
-# installed tool always wins over a fetched one.
-#
-# The npm package name is not always the executable's: 'biome' on npm is an
-# unrelated environment-variable helper that exits 0 whatever it is given.
+# Cached fetches for a tool nobody installed; floors only, never ceilings
 TOOL_RUNNERS = {
     "ruff": ["uvx", "ruff>=0.15"],
     "pyrefly": ["uvx", "pyrefly>=1.2"],
     "biome": ["npx", "-y", "@biomejs/biome@>=2.5"],
 }
 
-# Each supported extension has one formatter owner. Pyrefly additionally checks
-# Python types, but project configuration never changes tool selection.
+# One formatter owner per extension; configuration never changes selection
 TOOL_EXTENSIONS = {
     "ruff": (".py",),
     "pyrefly": (".py",),
@@ -317,31 +286,23 @@ TOOL_EXTENSIONS = {
     "gofmt": (".go",),
 }
 
-# Leave headroom below common operating-system argv limits. Commands with many
-# explicit targets are split before execution so directory checks stay scoped
-# without failing on large trees.
+# Headroom below common argv limits; long target lists are split before exec
 MAX_COMMAND_BYTES = 16 * 1024
 
-# Every canonical tool skips these when it walks a directory itself, but it can
-# only do that for a walk it performed. Naming files explicitly is what lets a
-# mixed tree be checked against the config that governs each part of it, and it
-# bypasses those exclusions: Pyrefly ignores project excludes for an explicit
-# path, so a virtualenv's contents would be type-checked as project code.
+# Named files bypass a tool's own exclusions, and Pyrefly ignores its excludes
 PRUNED_DIRECTORIES = frozenset(
     ".git .hg .svn .venv venv .tox .nox node_modules "
     "__pycache__ .mypy_cache .pytest_cache .ruff_cache".split()
 )
 
-# Per tool: the config filenames a project may use, the pyproject.toml section
-# that configures it (None for a tool with no pyproject form), and the flag
-# that names a config file.
+# Per tool: config filenames, pyproject section (None if it has none), flag
 CONFIG_SOURCES = {
     "ruff": (("ruff.toml", ".ruff.toml"), "ruff", "--config"),
     "pyrefly": (("pyrefly.toml",), "pyrefly", "--config"),
     "biome": (("biome.json", "biome.jsonc"), None, "--config-path"),
 }
 
-# The words each phase of a tool's command needs, before config and targets.
+# Words each phase needs, before config and targets
 TOOL_PHASES = {
     "ruff": {
         "check": ("check", "--force-exclude"),
@@ -370,7 +331,7 @@ def _matching_paths(path: Path, extensions: Sequence[str]) -> list[str]:
 
     Returns:
         The requested file, or sorted matching files below the directory,
-        skipping directories no tool would have walked into itself.
+        minus the directories no tool would have walked into.
     """
     if path.is_file():
         return [str(path)] if path.suffix in extensions else []
@@ -438,15 +399,9 @@ def _tool_command(binary: str, project_root: Path) -> list[str]:
         to the bare name when the tool has no runner, leaving PATH to
         resolve it as before.
     """
-    # npm keeps a project's tools out of PATH, so this is the only way to
-    # reach the version it installed. A Python virtualenv is deliberately
-    # not searched: activating one already puts its tools on PATH, so the
-    # lookup would add nothing except running a binary chosen by whichever
-    # directory the caller happened to be standing in.
+    # npm hides a project's tools from PATH; a venv on PATH needs no lookup
     local = project_root / "node_modules" / ".bin" / binary
-    # Existing is not being runnable: a plain file or a directory of the
-    # right name would otherwise win here and fail the next gate, hiding
-    # both the copy on PATH and the runner behind it.
+    # Existing is not being runnable, and a dead match hides the live ones
     if local.is_file() and os.access(local, os.X_OK):
         return [str(local)]
 
@@ -463,13 +418,12 @@ def _get_tool_definitions(path: Path, project_root: Path) -> list[ToolPlan]:
 
     Args:
         path: The path being checked, expanded to the files each tool owns.
-        project_root: The project root, bounding configuration discovery and
-            used to find project-local tool installs and ignore files.
+        project_root: Bounds config discovery, and locates tool installs
+            and ignore files.
 
     Returns:
-        Typed executable plans, one per tool per group of files needing the
-        same configuration. Two plans can share a name, which is why the
-        report tracks tools as a set.
+        Plans, one per tool per group of files needing the same config. Two
+        can share a name, which is why the report tracks tools as a set.
     """
     # Resolved once so every command for a tool reaches the same executable
     ruff = _tool_command("ruff", project_root)
@@ -479,8 +433,7 @@ def _get_tool_definitions(path: Path, project_root: Path) -> list[ToolPlan]:
     biome_files = _matching_paths(path, TOOL_EXTENSIONS["biome"])
     gofmt_targets = _matching_paths(path, TOOL_EXTENSIONS["gofmt"])
 
-    # Discovery is per tool: configuring one of them cannot opt a path out of
-    # the others, so each groups its own files and falls back alone.
+    # Per tool: configuring one cannot opt a path out of the others
     plans = [
         _plan("ruff", ruff, config, targets)
         for config, targets in _config_groups(
@@ -489,20 +442,13 @@ def _get_tool_definitions(path: Path, project_root: Path) -> list[ToolPlan]:
     ]
 
     for config, targets in _config_groups(biome_files, project_root, "biome"):
-        # Ignore discovery stays at the project root, the only place a
-        # repository-wide .gitignore can be, and only matters for the group
-        # falling back to a config outside the project.
+        # Only the root can hold a repository-wide .gitignore
         vcs = _vcs_args(project_root) if config else []
         plans.append(_plan("biome", biome, [*config, *vcs], targets))
 
     plans.append(_plan("gofmt", ("gofmt",), [], gofmt_targets))
 
-    # An explicit path switches Pyrefly to single-file mode, where the
-    # project's includes and excludes are deliberately ignored. Only a
-    # directory that owns its config is a project check: a config further up
-    # reaches wider than what was asked for, and answering a request for one
-    # package with a scan of the whole repository is the wrong kind of
-    # thorough.
+    # Only a directory owning its config is a project check
     files, section, _ = CONFIG_SOURCES["pyrefly"]
     pyrefly_root = _config_root(path, project_root, files, section)
     if path.is_dir() and pyrefly_root == _lexical_path(path):

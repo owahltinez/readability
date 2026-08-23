@@ -166,8 +166,7 @@ def test_check_command_directory(
     assert result.exit_code == 0
     cfg = str(_bundled_config("ruff"))
     called_cmds = [call.args[0] for call in mock_run.call_args_list]
-    # A directory is expanded to the files it holds, which is what lets each
-    # file be checked against the configuration that governs it
+    # Expanded to files, which is what lets each use its own configuration
     assert [
         "ruff",
         "check",
@@ -1477,8 +1476,7 @@ def test_biome_zero_file_result_is_not_reported_as_clean(
 
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path):
-        # An ignored directory the walk does not prune, so Biome is still
-        # handed the file and gets to report that it checked nothing
+        # Ignored but not pruned, so Biome is still handed the file
         Path(".gitignore").write_text("generated/\n")
         Path("generated/example").mkdir(parents=True)
         Path("generated/example/index.js").touch()
