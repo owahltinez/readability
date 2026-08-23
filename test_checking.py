@@ -656,6 +656,35 @@ def test_every_recognized_config_filename_defers_to_the_project(
     assert all(flag not in plan.check for plan in plans)
 
 
+@pytest.mark.parametrize(
+    "pruned", (".venv", "node_modules", "__pycache__", ".git", ".ruff_cache")
+)
+def test_expanding_a_directory_skips_what_the_tools_would_skip(
+    tmp_path: Path, pruned: str
+) -> None:
+    """Explicit paths bypass the exclusions a tool applies to its own walk.
+
+    Pyrefly ignores project excludes for an explicit path, so handing it
+    every file under a directory type-checked a virtualenv's contents as
+    project code and failed the run on third-party stubs.
+
+    Args:
+        tmp_path: The temporary directory fixture.
+        pruned: A directory name no tool should be handed files from.
+    """
+    (tmp_path / "mod.py").touch()
+    buried = tmp_path / pruned / "vendored"
+    buried.mkdir(parents=True)
+    (buried / "dep.py").touch()
+    (buried / "dep.ts").touch()
+
+    plans = _get_tool_definitions(tmp_path, tmp_path)
+
+    targets = [target for plan in plans for target in plan.targets or ()]
+    assert str(tmp_path / "mod.py") in targets
+    assert not [target for target in targets if pruned in target]
+
+
 def test_biome_ignore_discovery_stays_at_the_project_root(
     tmp_path: Path,
 ) -> None:
@@ -1448,9 +1477,11 @@ def test_biome_zero_file_result_is_not_reported_as_clean(
 
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path):
-        Path(".gitignore").write_text("node_modules/\n")
-        Path("node_modules/example").mkdir(parents=True)
-        Path("node_modules/example/index.js").touch()
+        # An ignored directory the walk does not prune, so Biome is still
+        # handed the file and gets to report that it checked nothing
+        Path(".gitignore").write_text("generated/\n")
+        Path("generated/example").mkdir(parents=True)
+        Path("generated/example/index.js").touch()
         Path("README.txt").touch()
 
         for extra_args, expected_calls in (([], 2), (["--fix"], 3)):

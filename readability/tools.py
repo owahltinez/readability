@@ -313,6 +313,28 @@ TOOL_EXTENSIONS = {
 # without failing on large trees.
 MAX_COMMAND_BYTES = 16 * 1024
 
+# Every canonical tool skips these when it walks a directory itself, but it can
+# only do that for a walk it performed. Naming files explicitly is what lets a
+# mixed tree be checked against the config that governs each part of it, and it
+# bypasses those exclusions: Pyrefly ignores project excludes for an explicit
+# path, so a virtualenv's contents would be type-checked as project code.
+PRUNED_DIRECTORIES = frozenset(
+    {
+        ".git",
+        ".hg",
+        ".svn",
+        ".venv",
+        "venv",
+        ".tox",
+        ".nox",
+        "node_modules",
+        "__pycache__",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+    }
+)
+
 
 def _matching_paths(path: Path, extensions: Sequence[str]) -> list[str]:
     """Return files under a requested path owned by one tool.
@@ -322,16 +344,24 @@ def _matching_paths(path: Path, extensions: Sequence[str]) -> list[str]:
         extensions: Extensions canonically assigned to the tool.
 
     Returns:
-        The requested file, or sorted matching files below the directory.
+        The requested file, or sorted matching files below the directory,
+        skipping directories no tool would have walked into itself.
     """
     if path.is_file():
         return [str(path)] if path.suffix in extensions else []
 
-    return sorted(
-        str(candidate)
-        for candidate in path.rglob("*")
-        if candidate.is_file() and candidate.suffix in extensions
-    )
+    matches: list[str] = []
+    for directory, subdirectories, filenames in os.walk(path):
+        # Pruned in place, which is what stops os.walk descending into them
+        subdirectories[:] = [
+            name for name in subdirectories if name not in PRUNED_DIRECTORIES
+        ]
+        matches.extend(
+            str(Path(directory) / filename)
+            for filename in filenames
+            if Path(filename).suffix in extensions
+        )
+    return sorted(matches)
 
 
 def _command_batches(cmd: Sequence[str], target_count: int) -> list[list[str]]:
