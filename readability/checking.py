@@ -74,8 +74,10 @@ def check_paths(
     Args:
         paths: Files or directories to check, as strings or paths. Relative
             paths are interpreted from the current working directory.
-        project_root: Root used only to discover tool configuration. Defaults
-            to the current working directory; it does not rebase paths.
+        project_root: Root used to find project-local tool installs and to
+            anchor ignore-file discovery. Defaults to the current working
+            directory; it does not rebase paths, and it does not bound
+            configuration discovery, which follows each checked path.
         fix: Whether to apply automatic fixes.
 
     Returns:
@@ -109,7 +111,8 @@ def _check_path(
 
     Args:
         path: The path (file or directory) to check.
-        project_root: The root used for native tool configuration discovery.
+        project_root: The root used to find project-local tool installs and to
+            anchor ignore-file discovery.
         fix: Whether to apply automatic fixes.
 
     Returns:

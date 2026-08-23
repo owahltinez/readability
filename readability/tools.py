@@ -80,24 +80,30 @@ def _bundled_config(tool_name: str) -> Path:
 
 
 def _has_project_config(
-    project_root: Path, config_files: Sequence[str], tool_name: str
+    directory: Path, config_files: Sequence[str], tool_name: str | None
 ) -> bool:
-    """Determine whether the project defines its own configuration for a tool.
+    """Determine whether one directory configures a tool.
 
     Args:
-        project_root: The project root directory.
+        directory: The directory to inspect.
         config_files: Dedicated config filenames to look for (e.g. ruff.toml).
-        tool_name: The pyproject.toml [tool.<name>] section to look for.
+        tool_name: The pyproject.toml [tool.<name>] section to look for, or
+            None for a tool that has no pyproject.toml representation.
 
     Returns:
-        True if the project has its own configuration, False otherwise.
+        True if the directory configures the tool, False otherwise.
     """
     # Dedicated config files take precedence over pyproject.toml sections
-    if any((project_root / f).exists() for f in config_files):
+    if any((directory / f).exists() for f in config_files):
         return True
 
+    # Biome passes None: it has no pyproject.toml form, so a stray
+    # [tool.biome] section would otherwise suppress the bundled default.
+    if tool_name is None:
+        return False
+
     # Otherwise look for a [tool.<name>] section in pyproject.toml
-    pyproject = project_root / "pyproject.toml"
+    pyproject = directory / "pyproject.toml"
     if not pyproject.exists():
         return False
     try:
@@ -108,21 +114,59 @@ def _has_project_config(
     return tool_name in data.get("tool", {})
 
 
-def _default_config_args(
-    project_root: Path, config_files: Sequence[str], tool_name: str
-) -> list[str]:
+def _config_root(
+    path: Path, config_files: Sequence[str], tool_name: str | None
+) -> Path | None:
+    """Find the nearest directory that configures a tool for a path.
+
+    Every canonical tool resolves configuration by walking up from the files
+    it is handed, stopping at no boundary. Testing one directory instead meant
+    a project keeping its config in a subdirectory was reported against a
+    style it had rejected, and --fix rewrote its files to match.
+
+    Bounding this walk reproduces that same bug one level up rather than
+    fixing it: bounded at the working directory, `cd pkg && readability check
+    mod.py` misses the configuration the repository root declares, which Ruff
+    reads. Agreeing with the tools is the property worth having, so the search
+    ends where theirs does.
+
+    Args:
+        path: The file or directory being checked. Resolved before walking, so
+            a relative path searches its real ancestors instead of running out
+            of parents at the working directory.
+        config_files: Dedicated config filenames the project may define.
+        tool_name: The pyproject.toml [tool.<name>] section, or None for a
+            tool that has no pyproject.toml representation.
+
+    Returns:
+        The nearest configuring directory, or None if no ancestor configures
+        the tool.
+    """
+    start = (path if path.is_dir() else path.parent).resolve()
+    return next(
+        (
+            directory
+            for directory in (start, *start.parents)
+            if _has_project_config(directory, config_files, tool_name)
+        ),
+        None,
+    )
+
+
+def _bundled_config_args(config_root: Path | None, tool_name: str) -> list[str]:
     """Build --config arguments pointing at the bundled defaults for a tool.
 
     Args:
-        project_root: The project root directory.
-        config_files: Dedicated config filenames the project may define.
+        config_root: The directory configuring the tool, or None if none does.
         tool_name: The name of the tool, matching a bundled config file.
 
     Returns:
         --config arguments for the bundled defaults, or an empty list when the
-        project defines its own configuration (which must take precedence).
+        project configures the tool itself. Passing nothing in that case lets
+        the tool apply its own documented precedence, which an explicit config
+        argument would override.
     """
-    if _has_project_config(project_root, config_files, tool_name):
+    if config_root is not None:
         return []
     return ["--config", str(_bundled_config(tool_name))]
 
@@ -266,32 +310,32 @@ def _get_tool_definitions(path: Path, project_root: Path) -> list[ToolPlan]:
     """Define supported tools with their extensions and commands.
 
     Args:
-        path: The path being checked.
-        project_root: The project root, used to resolve default configurations.
+        path: The path being checked, which also anchors config discovery.
+        project_root: The project root, used to find project-local tool
+            installs and to anchor ignore-file discovery.
 
     Returns:
         Typed executable plans for every canonical tool.
     """
     path_str = str(path)
 
-    # Fall back to the bundled default configs unless the project has its own
-    ruff_config = _default_config_args(
-        project_root, ["ruff.toml", ".ruff.toml"], "ruff"
-    )
-    pyrefly_config = _default_config_args(
-        project_root, ["pyrefly.toml"], "pyrefly"
-    )
+    # Discovery is per tool: configuring one of them cannot opt a path out of
+    # the others, so each searches for its own config and falls back alone.
+    ruff_root = _config_root(path, ["ruff.toml", ".ruff.toml"], "ruff")
+    ruff_config = _bundled_config_args(ruff_root, "ruff")
+    pyrefly_root = _config_root(path, ["pyrefly.toml"], "pyrefly")
+    pyrefly_config = _bundled_config_args(pyrefly_root, "pyrefly")
     # An explicit path switches Pyrefly to single-file mode, where the
     # project's includes, excludes, and project-rooted import resolution are
-    # deliberately ignored. A directory backed by project-owned settings is
-    # a project check, so let Pyrefly discover its files from that config.
-    pyrefly_project_mode = path.is_dir() and not pyrefly_config
+    # deliberately ignored. Only a directory that owns its config is a project
+    # check: when the config sits further up, its includes reach wider than
+    # what was asked for, and answering a request for one package with a scan
+    # of the whole repository is the wrong kind of thorough.
+    pyrefly_project_mode = path.is_dir() and pyrefly_root == path.resolve()
     pyrefly_targets = [] if pyrefly_project_mode else [path_str]
+    biome_root = _config_root(path, ["biome.json", "biome.jsonc"], None)
     biome_config = []
-    if not any(
-        (project_root / filename).exists()
-        for filename in ("biome.json", "biome.jsonc")
-    ):
+    if biome_root is None:
         biome_config = ["--config-path", str(_bundled_config("biome"))]
         ignore_files = (
             project_root / ".gitignore",
@@ -359,7 +403,7 @@ def _get_tool_definitions(path: Path, project_root: Path) -> list[ToolPlan]:
                 *pyrefly_config,
                 *pyrefly_targets,
             ),
-            cwd=project_root if pyrefly_project_mode else None,
+            cwd=pyrefly_root if pyrefly_project_mode else None,
             extensions=TOOL_EXTENSIONS["pyrefly"],
         ),
         ToolPlan(
