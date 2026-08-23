@@ -88,7 +88,9 @@ def check_paths(
         FileNotFoundError: If any requested path does not exist. Every path is
             validated before any tools run.
     """
-    root = project_root if project_root is not None else Path.cwd()
+    here = Path.cwd()
+    repository = _repository_root(here)
+    root = project_root if project_root is not None else (repository or here)
     # A named root bounds the search; otherwise each path's repository does
     boundary = project_root
     requested_paths = [Path(path) for path in paths]
@@ -128,8 +130,7 @@ def _check_path(
     logger.info("Checking path: %s", path)
 
     if boundary is None:
-        start = path if path.is_dir() else path.parent
-        boundary = _repository_root(start) or Path(start.resolve().anchor)
+        boundary = _repository_root(path) or Path(path.resolve().anchor)
 
     # Iterate through all supported tool definitions
     report = CheckReport()

@@ -164,31 +164,38 @@ def _config_root(
     return None
 
 
-def _nested_config(
-    path: Path, config_files: Sequence[str], tool_name: str | None
-) -> bool:
-    """Report whether anything below a directory declares its own config.
+def _config_roots_below(
+    path: Path, config_files: Sequence[str], tool_name: str | None, tool: str
+) -> list[Path]:
+    """Find the projects nested inside a path that configure a tool.
+
+    A config file with none of the tool's files beside it is data, not a
+    project disagreeing, and treating it as one used to cost the whole tree
+    its handed-over path for nothing.
 
     Args:
         path: The path being checked.
         config_files: Dedicated config filenames the project may define.
         tool_name: The pyproject.toml section, or None if it has none.
+        tool: The tool's name, keying TOOL_EXTENSIONS.
 
     Returns:
-        True if some directory strictly below path configures the tool, which
-        is the only case a single target cannot describe.
+        Resolved directories strictly below path that configure the tool and
+        hold at least one file it owns.
     """
-    if not path.is_dir():
-        return False
+    found = []
     for directory, subdirectories, _ in os.walk(path):
         subdirectories[:] = [
             name for name in subdirectories if name not in PRUNED_DIRECTORIES
         ]
-        if directory != str(path) and _has_project_config(
-            Path(directory), config_files, tool_name
+        candidate = Path(directory)
+        if directory == str(path) or not _has_project_config(
+            candidate, config_files, tool_name
         ):
-            return True
-    return False
+            continue
+        if _matching_paths(candidate, TOOL_EXTENSIONS[tool]):
+            found.append(candidate.resolve())
+    return found
 
 
 def _vcs_args(project_root: Path) -> list[str]:
@@ -213,15 +220,16 @@ def _vcs_args(project_root: Path) -> list[str]:
 
 def _config_groups(
     path: Path, boundary: Path, tool: str
-) -> list[tuple[Path | None, list[str] | None]]:
+) -> list[tuple[Path | None, list[str] | None, list[Path]]]:
     """Group what to hand a tool by the project each part belongs to.
 
-    One group is one project, which is the unit a tool can be pointed at:
-    Biome resolves a single config per run, anchored where it is started, so a
-    nested one is only reachable by starting there. When nothing below the
-    path disagrees, the whole path is one group and the tool is handed the
-    path itself, which is what keeps its own excludes and ignore files
-    applying. Naming files is reserved for a tree that genuinely disagrees.
+    Handing over a path is what keeps the tool walking, and only a walk it
+    performed applies its own ignore files: Ruff checks an explicitly named
+    path whatever .gitignore says, so naming files there is how --fix came to
+    rewrite generated code. A nested project is therefore carved out with the
+    tool's exclude flag rather than by naming everything around it. Biome has
+    no such flag, but honours its ignore file for named paths, so for it the
+    files are named instead.
 
     Args:
         path: The file or directory being checked.
@@ -229,30 +237,32 @@ def _config_groups(
         tool: The tool's name, keying CONFIG_SOURCES.
 
     Returns:
-        One (config root, targets) pair per group, nearest root first and the
-        unconfigured remainder last. A root of None means no project
-        configures those files; targets of None means hand over the path.
+        One (config root, targets, excludes) triple per group. A config root of
+        None means nothing configures those files; targets of None means hand
+        over the path itself.
     """
-    config_files, section, _ = CONFIG_SOURCES[tool]
+    config_files, section, _, exclude_flag = CONFIG_SOURCES[tool]
     own = _config_root(path, boundary, config_files, section)
+    nested = _config_roots_below(path, config_files, section, tool)
+    if not nested:
+        return [(own, None, [])]
 
-    if not _nested_config(path, config_files, section):
-        return [(own, None)]
+    # Without an exclude flag a path minus part of it is inexpressible
+    if exclude_flag is None:
+        named: dict[Path | None, list[str]] = {}
+        for target in _matching_paths(path, TOOL_EXTENSIONS[tool]):
+            root = _config_root(Path(target), boundary, config_files, section)
+            named.setdefault(root, []).append(target)
+        return [(root, targets, []) for root, targets in named.items()]
 
-    groups: dict[Path | None, list[str]] = {}
-    for target in _matching_paths(path, TOOL_EXTENSIONS[tool]):
-        root = _config_root(Path(target), boundary, config_files, section)
-        groups.setdefault(root, []).append(target)
-
-    # Deepest project first, with the unconfigured remainder last
-    roots = sorted(
-        (root for root in groups if root is not None),
-        key=lambda root: len(root.parts),
-        reverse=True,
+    groups: list[tuple[Path | None, list[str] | None, list[Path]]] = [
+        (own, None, nested)
+    ]
+    groups.extend(
+        (root, [str(root)], [r for r in nested if root in r.parents])
+        for root in nested
     )
-    if None in groups:
-        return [(root, groups[root]) for root in [*roots, None]]
-    return [(root, groups[root]) for root in roots]
+    return groups
 
 
 def _plan(
@@ -261,6 +271,7 @@ def _plan(
     config: Sequence[str],
     targets: Sequence[str] | None,
     path: Path,
+    excludes: Sequence[Path] = (),
     cwd: Path | None = None,
 ) -> ToolPlan:
     """Build one tool plan, every phase sharing its config and targets.
@@ -271,6 +282,7 @@ def _plan(
         config: Configuration arguments, empty when the file has its own.
         targets: Files to name, or None to hand over the path itself.
         path: The path being checked, used when targets is None.
+        excludes: Nested projects to carve out of the targets.
         cwd: Directory to run in, for a tool that resolves config from it.
 
     Returns:
@@ -280,9 +292,17 @@ def _plan(
     # A target is only reachable from another directory if it is absolute
     if cwd is not None:
         argv = [str(Path(target).resolve()) for target in argv]
+    carved = []
+    if excludes:
+        flag = CONFIG_SOURCES[tool][3]
+        carved = [
+            argument
+            for exclude in excludes
+            for argument in (str(flag), str(exclude))
+        ]
     # Named rather than unpacked, so the type checker still sees the fields
     phases = {
-        phase: (*binary, *words, *config, *argv)
+        phase: (*binary, *words, *config, *carved, *argv)
         for phase, words in TOOL_PHASES[tool].items()
     }
     return ToolPlan(
@@ -332,9 +352,19 @@ PRUNED_DIRECTORIES = frozenset(
 
 # Per tool: config filenames, pyproject section (None if it has none), flag
 CONFIG_SOURCES = {
-    "ruff": (("ruff.toml", ".ruff.toml"), "ruff", "--config"),
-    "pyrefly": (("pyrefly.toml",), "pyrefly", "--config"),
-    "biome": (("biome.json", "biome.jsonc"), None, "--config-path"),
+    "ruff": (
+        ("ruff.toml", ".ruff.toml"),
+        "ruff",
+        "--config",
+        "--extend-exclude",
+    ),
+    "pyrefly": (
+        ("pyrefly.toml",),
+        "pyrefly",
+        "--config",
+        "--project-excludes",
+    ),
+    "biome": (("biome.json", "biome.jsonc"), None, "--config-path", None),
 }
 
 # Words each phase needs, before config and targets
@@ -481,7 +511,7 @@ def _get_tool_definitions(
             One plan per group, each pointed at the project it belongs to.
         """
         built = []
-        for root, targets in _config_groups(path, boundary, tool):
+        for root, targets, excludes in _config_groups(path, boundary, tool):
             config = []
             if root is None:
                 flag = CONFIG_SOURCES[tool][2]
@@ -489,9 +519,11 @@ def _get_tool_definitions(
                 # Only Biome needs telling where the ignore files are
                 if tool == "biome":
                     config += _vcs_args(project_root)
-            # Started elsewhere only when the project is elsewhere
-            cwd = root if root is not None and root != project_root else None
-            built.append(_plan(tool, binary, config, targets, path, cwd))
+            # Biome alone resolves config from where it was started
+            cwd = root if tool == "biome" else None
+            built.append(
+                _plan(tool, binary, config, targets, path, excludes, cwd)
+            )
         return built
 
     # Per tool: configuring one cannot opt a path out of the others
@@ -507,9 +539,13 @@ def _get_tool_definitions(
         )
     )
 
-    # Only a directory owning its config is a project check
-    files, section, _ = CONFIG_SOURCES["pyrefly"]
-    if _config_root(path, boundary, files, section) == path.resolve():
+    # A directory owning its config alone lets Pyrefly select the files
+    files, section = CONFIG_SOURCES["pyrefly"][:2]
+    groups = _config_groups(path, boundary, "pyrefly")
+    if (
+        len(groups) == 1
+        and _config_root(path, boundary, files, section) == path.resolve()
+    ):
         plans.append(
             ToolPlan(
                 name="pyrefly",
