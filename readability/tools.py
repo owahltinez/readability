@@ -117,16 +117,14 @@ def _has_project_config(
 def _lexical_path(path: Path) -> Path:
     """Make a path absolute without following symbolic links.
 
-    Resolving would jump into a link target's tree and search ancestors the
-    project never mentioned, disagreeing with Ruff about a vendored directory
-    that is a link. Normalizing lexically keeps discovery on the path the
-    caller named, which is the one the tools read.
+    Resolving would search the link target's ancestors instead, disagreeing
+    with Ruff about a vendored directory that is a link.
 
     Args:
         path: The path to normalize.
 
     Returns:
-        An absolute path with '..' segments removed and links intact.
+        An absolute path with '..' removed and links intact.
     """
     return Path(os.path.abspath(path))
 
@@ -134,10 +132,9 @@ def _lexical_path(path: Path) -> Path:
 def _repository_root(start: Path) -> Path:
     """Find the repository the caller is standing in.
 
-    Config discovery is bounded by this root, so it has to be the project
-    rather than the directory the caller happened to be in. Bounded at the
+    Discovery is bounded by this, so it has to be the project: bounded at the
     working directory, `cd pkg && readability check mod.py` would miss the
-    configuration the repository root declares, which Ruff reads.
+    config the repository root declares, which Ruff reads.
 
     Args:
         start: The directory to search upward from.
@@ -158,18 +155,11 @@ def _config_root(
     config_files: Sequence[str],
     tool_name: str | None,
 ) -> Path | None:
-    """Find the nearest directory at or under a boundary that configures a tool.
+    """Find the nearest directory up to a boundary that configures a tool.
 
-    Every canonical tool resolves configuration by walking up from the files
-    it is handed. Testing one directory instead meant a project keeping its
-    config in a subdirectory was reported against a style it had rejected,
-    and --fix rewrote its files to match.
-
-    The search stops at the boundary so that one answer does not depend on
-    what happens to sit above the project. Callers score output against a
-    fixed baseline, and a stray pyproject.toml two levels up silently
-    re-baselining every run is worse than declining to read a config outside
-    the project the caller named.
+    Walking up is what the tools do. Stopping at the boundary keeps the answer
+    from depending on what happens to sit above the project, which callers
+    scoring against a fixed baseline rely on.
 
     Args:
         path: The file or directory being checked.
@@ -179,14 +169,12 @@ def _config_root(
             tool that has no pyproject.toml representation.
 
     Returns:
-        The nearest configuring directory, or None if nothing between the path
-        and the boundary configures the tool.
+        The nearest configuring directory, or None if none does.
     """
     start = _lexical_path(path if path.is_dir() else path.parent)
     root = _lexical_path(boundary)
 
-    # Outside the boundary there is no project standing behind the path, so
-    # there is nothing to find and the bundled default applies.
+    # Outside the boundary there is no project speaking for the path
     if start != root and root not in start.parents:
         return None
 
@@ -201,21 +189,17 @@ def _config_root(
 def _vcs_args(project_root: Path) -> list[str]:
     """Point Biome at the project's ignore files when using a bundled config.
 
-    An external config file leaves Biome with no project to root ignore
+    A config outside the project leaves Biome nothing to root ignore
     discovery in, so it has to be told.
 
     Args:
         project_root: The directory holding the repository's ignore files.
 
     Returns:
-        VCS arguments, or an empty list when the project has no ignore file.
+        VCS arguments, or an empty list when there is no ignore file.
     """
-    ignore_files = (
-        project_root / ".gitignore",
-        project_root / ".ignore",
-        project_root / ".git" / "info" / "exclude",
-    )
-    if not any(ignore_file.is_file() for ignore_file in ignore_files):
+    ignore_files = (".gitignore", ".ignore", ".git/info/exclude")
+    if not any((project_root / name).is_file() for name in ignore_files):
         return []
     return [
         "--vcs-enabled=true",
@@ -226,46 +210,71 @@ def _vcs_args(project_root: Path) -> list[str]:
 
 
 def _config_groups(
-    targets: Sequence[str],
-    boundary: Path,
-    config_files: Sequence[str],
-    tool_name: str | None,
-    config_flag: str,
-    bundled_tool: str,
+    targets: Sequence[str], boundary: Path, tool: str
 ) -> list[tuple[list[str], list[str]]]:
-    """Group targets by the configuration arguments they need.
+    """Group a tool's files by the configuration arguments they need.
 
-    A tool only needs to be told which config to use when the project names
-    none, because it resolves its own hierarchy per file: one Ruff invocation
-    over two packages declaring different line lengths reports each against
-    its own. So however many configs a tree holds, the question is binary and
-    two groups cover it.
+    A tool only needs telling which config to use when the file has none,
+    because it resolves its own hierarchy: one Ruff invocation over two
+    packages declaring different line lengths reports each against its own.
+    So the question is binary and two groups cover any tree.
 
     Args:
         targets: The files the tool owns, as strings.
         boundary: The outermost directory config discovery may consider.
-        config_files: Dedicated config filenames the project may define.
-        tool_name: The pyproject.toml [tool.<name>] section, or None.
-        config_flag: The tool's flag for naming a config ('--config').
-        bundled_tool: The name of the bundled config to fall back to.
+        tool: The tool's name, keying CONFIG_SOURCES.
 
     Returns:
-        One (config arguments, targets) pair per non-empty group, configured
-        files first. Configured files carry no config argument at all, which
-        is what lets the tool apply its own documented precedence.
+        One (config arguments, targets) pair per non-empty group. Configured
+        files carry no config argument at all, which is what lets the tool
+        apply its own precedence.
     """
+    config_files, section, flag = CONFIG_SOURCES[tool]
     configured: list[str] = []
     unconfigured: list[str] = []
     for target in targets:
-        root = _config_root(Path(target), boundary, config_files, tool_name)
+        root = _config_root(Path(target), boundary, config_files, section)
         (configured if root is not None else unconfigured).append(target)
 
-    bundled = [config_flag, str(_bundled_config(bundled_tool))]
+    bundled = [flag, str(_bundled_config(tool))]
     return [
         (args, group)
         for args, group in (([], configured), (bundled, unconfigured))
         if group
     ]
+
+
+def _plan(
+    tool: str,
+    binary: Sequence[str],
+    config: Sequence[str],
+    targets: Sequence[str],
+) -> ToolPlan:
+    """Build one tool plan, every phase sharing the same config and targets.
+
+    Args:
+        tool: The tool's name, keying TOOL_PHASES and TOOL_EXTENSIONS.
+        binary: The argv prefix that reaches the executable.
+        config: Configuration arguments, empty when the file has its own.
+        targets: The files to hand the tool.
+
+    Returns:
+        The plan, with every phase the tool supports populated.
+    """
+    # Named rather than unpacked, so the type checker still sees the fields
+    phases = {
+        phase: (*binary, *words, *config, *targets)
+        for phase, words in TOOL_PHASES[tool].items()
+    }
+    return ToolPlan(
+        name=tool,
+        extensions=TOOL_EXTENSIONS[tool],
+        targets=tuple(targets),
+        check=phases.get("check", ()),
+        check_format=phases.get("check_format", ()),
+        fix=phases.get("fix", ()),
+        format=phases.get("format", ()),
+    )
 
 
 # How to reach a tool nobody installed. Both runners cache what they fetch,
@@ -319,21 +328,37 @@ MAX_COMMAND_BYTES = 16 * 1024
 # bypasses those exclusions: Pyrefly ignores project excludes for an explicit
 # path, so a virtualenv's contents would be type-checked as project code.
 PRUNED_DIRECTORIES = frozenset(
-    {
-        ".git",
-        ".hg",
-        ".svn",
-        ".venv",
-        "venv",
-        ".tox",
-        ".nox",
-        "node_modules",
-        "__pycache__",
-        ".mypy_cache",
-        ".pytest_cache",
-        ".ruff_cache",
-    }
+    ".git .hg .svn .venv venv .tox .nox node_modules "
+    "__pycache__ .mypy_cache .pytest_cache .ruff_cache".split()
 )
+
+# Per tool: the config filenames a project may use, the pyproject.toml section
+# that configures it (None for a tool with no pyproject form), and the flag
+# that names a config file.
+CONFIG_SOURCES = {
+    "ruff": (("ruff.toml", ".ruff.toml"), "ruff", "--config"),
+    "pyrefly": (("pyrefly.toml",), "pyrefly", "--config"),
+    "biome": (("biome.json", "biome.jsonc"), None, "--config-path"),
+}
+
+# The words each phase of a tool's command needs, before config and targets.
+TOOL_PHASES = {
+    "ruff": {
+        "check": ("check", "--force-exclude"),
+        "check_format": ("format", "--check", "--force-exclude"),
+        "fix": ("check", "--fix", "--force-exclude"),
+        "format": ("format", "--force-exclude"),
+    },
+    # Type checker only: reports findings, cannot fix or format
+    "pyrefly": {"check": ("check",)},
+    "biome": {
+        "check": ("lint", "--no-errors-on-unmatched"),
+        "check_format": ("format", "--no-errors-on-unmatched"),
+        "fix": ("lint", "--write", "--no-errors-on-unmatched"),
+        "format": ("format", "--write", "--no-errors-on-unmatched"),
+    },
+    "gofmt": {"check_format": ("-l",), "format": ("-w",)},
+}
 
 
 def _matching_paths(path: Path, extensions: Sequence[str]) -> list[str]:
@@ -456,147 +481,45 @@ def _get_tool_definitions(path: Path, project_root: Path) -> list[ToolPlan]:
 
     # Discovery is per tool: configuring one of them cannot opt a path out of
     # the others, so each groups its own files and falls back alone.
-    plans: list[ToolPlan] = []
-    for ruff_config, targets in _config_groups(
-        python_files,
-        project_root,
-        ["ruff.toml", ".ruff.toml"],
-        "ruff",
-        "--config",
-        "ruff",
-    ):
-        plans.append(
-            ToolPlan(
-                name="ruff",
-                check=(
-                    *ruff,
-                    "check",
-                    "--force-exclude",
-                    *ruff_config,
-                    *targets,
-                ),
-                check_format=(
-                    *ruff,
-                    "format",
-                    "--check",
-                    "--force-exclude",
-                    *ruff_config,
-                    *targets,
-                ),
-                fix=(
-                    *ruff,
-                    "check",
-                    "--fix",
-                    "--force-exclude",
-                    *ruff_config,
-                    *targets,
-                ),
-                format=(
-                    *ruff,
-                    "format",
-                    "--force-exclude",
-                    *ruff_config,
-                    *targets,
-                ),
-                extensions=TOOL_EXTENSIONS["ruff"],
-                targets=tuple(targets),
-            )
+    plans = [
+        _plan("ruff", ruff, config, targets)
+        for config, targets in _config_groups(
+            python_files, project_root, "ruff"
         )
+    ]
+
+    for config, targets in _config_groups(biome_files, project_root, "biome"):
+        # Ignore discovery stays at the project root, the only place a
+        # repository-wide .gitignore can be, and only matters for the group
+        # falling back to a config outside the project.
+        vcs = _vcs_args(project_root) if config else []
+        plans.append(_plan("biome", biome, [*config, *vcs], targets))
+
+    plans.append(_plan("gofmt", ("gofmt",), [], gofmt_targets))
 
     # An explicit path switches Pyrefly to single-file mode, where the
-    # project's includes, excludes, and project-rooted import resolution are
-    # deliberately ignored. Only a directory that owns its config is a project
-    # check: when the config sits further up, its includes reach wider than
-    # what was asked for, and answering a request for one package with a scan
-    # of the whole repository is the wrong kind of thorough.
-    pyrefly_root = _config_root(path, project_root, ["pyrefly.toml"], "pyrefly")
+    # project's includes and excludes are deliberately ignored. Only a
+    # directory that owns its config is a project check: a config further up
+    # reaches wider than what was asked for, and answering a request for one
+    # package with a scan of the whole repository is the wrong kind of
+    # thorough.
+    files, section, _ = CONFIG_SOURCES["pyrefly"]
+    pyrefly_root = _config_root(path, project_root, files, section)
     if path.is_dir() and pyrefly_root == _lexical_path(path):
         plans.append(
             ToolPlan(
-                # Type checker only: reports findings, cannot fix or format
                 name="pyrefly",
                 check=(*pyrefly, "check"),
                 cwd=pyrefly_root,
                 extensions=TOOL_EXTENSIONS["pyrefly"],
             )
         )
-    else:
-        for pyrefly_config, targets in _config_groups(
-            python_files,
-            project_root,
-            ["pyrefly.toml"],
-            "pyrefly",
-            "--config",
-            "pyrefly",
-        ):
-            plans.append(
-                ToolPlan(
-                    name="pyrefly",
-                    check=(*pyrefly, "check", *pyrefly_config, *targets),
-                    extensions=TOOL_EXTENSIONS["pyrefly"],
-                    targets=tuple(targets),
-                )
-            )
+        return plans
 
-    for bundled_args, targets in _config_groups(
-        biome_files,
-        project_root,
-        ["biome.json", "biome.jsonc"],
-        None,
-        "--config-path",
-        "biome",
-    ):
-        # Ignore-file discovery stays anchored at the project root, which is
-        # the only place a repository-wide .gitignore can be, and only matters
-        # for the group falling back to the bundled default.
-        biome_config = (
-            [*bundled_args, *_vcs_args(project_root)] if bundled_args else []
-        )
-        plans.append(
-            ToolPlan(
-                name="biome",
-                check=(
-                    *biome,
-                    "lint",
-                    *biome_config,
-                    "--no-errors-on-unmatched",
-                    *targets,
-                ),
-                check_format=(
-                    *biome,
-                    "format",
-                    *biome_config,
-                    "--no-errors-on-unmatched",
-                    *targets,
-                ),
-                fix=(
-                    *biome,
-                    "lint",
-                    "--write",
-                    *biome_config,
-                    "--no-errors-on-unmatched",
-                    *targets,
-                ),
-                format=(
-                    *biome,
-                    "format",
-                    "--write",
-                    *biome_config,
-                    "--no-errors-on-unmatched",
-                    *targets,
-                ),
-                extensions=TOOL_EXTENSIONS["biome"],
-                targets=tuple(targets),
-            )
-        )
-
-    plans.append(
-        ToolPlan(
-            name="gofmt",
-            check_format=("gofmt", "-l", *gofmt_targets),
-            format=("gofmt", "-w", *gofmt_targets),
-            extensions=TOOL_EXTENSIONS["gofmt"],
-            targets=tuple(gofmt_targets),
+    plans.extend(
+        _plan("pyrefly", pyrefly, config, targets)
+        for config, targets in _config_groups(
+            python_files, project_root, "pyrefly"
         )
     )
     return plans
