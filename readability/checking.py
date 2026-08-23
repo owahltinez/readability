@@ -88,9 +88,9 @@ def check_paths(
         FileNotFoundError: If any requested path does not exist. Every path is
             validated before any tools run.
     """
-    root = (
-        _repository_root(Path.cwd()) if project_root is None else project_root
-    )
+    root = project_root if project_root is not None else Path.cwd()
+    # A named root bounds the search; otherwise each path's repository does
+    boundary = project_root
     requested_paths = [Path(path) for path in paths]
     missing_path = next(
         (path for path in requested_paths if not path.exists()), None
@@ -100,7 +100,7 @@ def check_paths(
 
     report = CheckReport()
     for path in requested_paths:
-        path_report = _check_path(path, root, fix=fix)
+        path_report = _check_path(path, root, boundary, fix=fix)
         if not path_report.ran:
             path_report.unverified_paths.append(path)
         report.absorb(path_report)
@@ -108,14 +108,18 @@ def check_paths(
 
 
 def _check_path(
-    path: Path, project_root: Path, fix: bool = False
+    path: Path,
+    project_root: Path,
+    boundary: Path | None = None,
+    fix: bool = False,
 ) -> CheckReport:
     """Apply relevant tools to a single path.
 
     Args:
         path: The path (file or directory) to check.
-        project_root: Bounds config discovery, locates tool installs and
-            ignore files.
+        project_root: Locates tool installs and ignore files.
+        boundary: Outermost directory config discovery may consider, or
+            None to bound it by the path's own repository.
         fix: Whether to apply automatic fixes.
 
     Returns:
@@ -123,9 +127,13 @@ def _check_path(
     """
     logger.info("Checking path: %s", path)
 
+    if boundary is None:
+        start = path if path.is_dir() else path.parent
+        boundary = _repository_root(start) or Path(start.resolve().anchor)
+
     # Iterate through all supported tool definitions
     report = CheckReport()
-    for tool in _get_tool_definitions(path, project_root):
+    for tool in _get_tool_definitions(path, project_root, boundary):
         if not _should_run_tool(tool, path):
             continue
 

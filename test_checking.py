@@ -166,14 +166,14 @@ def test_check_command_directory(
     assert result.exit_code == 0
     cfg = str(_bundled_config("ruff"))
     called_cmds = [call.args[0] for call in mock_run.call_args_list]
-    # Expanded to files, which is what lets each use its own configuration
+    # The directory itself, since nothing inside it disagrees about config
     assert [
         "ruff",
         "check",
         "--force-exclude",
         "--config",
         cfg,
-        "subdir/script.py",
+        "subdir",
     ] in called_cmds
 
 
@@ -459,21 +459,25 @@ def test_discovery_stops_at_the_declared_root(tmp_path: Path) -> None:
     assert str(_bundled_config("ruff")) in plans[0].check
 
 
-def test_a_symlinked_directory_is_not_followed_out_of_the_project(
+def test_a_symlinked_directory_resolves_like_ruff_does(
     tmp_path: Path,
 ) -> None:
-    """Ruff reads the path it was given, so discovery must not resolve links."""
+    """Ruff resolves links for discovery, so agreeing with it means resolving.
+
+    Reading the link path instead made the verdict depend on the spelling,
+    because the boundary it is compared against is already resolved.
+    """
     project = tmp_path / "proj"
     project.mkdir()
-    (project / "pyproject.toml").write_text("[tool.ruff]\nline-length = 200\n")
     outside = tmp_path / "elsewhere" / "pkg"
     outside.mkdir(parents=True)
+    (outside / "pyproject.toml").write_text("[tool.ruff]\n")
     (outside / "mod.py").touch()
     (project / "vendored").symlink_to(outside)
 
     plans = [
         plan
-        for plan in _get_tool_definitions(project / "vendored", project)
+        for plan in _get_tool_definitions(project / "vendored", tmp_path)
         if plan.name == "ruff"
     ]
 
@@ -497,10 +501,13 @@ def test_the_cli_bounds_discovery_at_the_repository_not_the_directory(
     (package / "mod.py").touch()
     monkeypatch.chdir(package)
 
-    with patch("readability.checking._check_path") as check_path:
+    with patch(
+        "readability.checking._get_tool_definitions", return_value=[]
+    ) as definitions:
         check_paths([Path("mod.py")])
 
-    assert check_path.call_args.args[1] == tmp_path
+    # Bounded at the caller's directory the repository's config is missed
+    assert definitions.call_args.args[2] == tmp_path
 
 
 def test_relative_and_absolute_paths_discover_the_same_config(
@@ -554,11 +561,7 @@ def test_pyrefly_project_mode_needs_the_config_at_the_checked_directory(
             tool.name: tool for tool in _get_tool_definitions(package, tmp_path)
         }
 
-    assert tools["pyrefly"].check == (
-        "pyrefly",
-        "check",
-        str(package / "mod.py"),
-    )
+    assert tools["pyrefly"].check == ("pyrefly", "check", str(package))
     assert tools["pyrefly"].cwd is None
 
 
@@ -582,40 +585,31 @@ def test_pyrefly_project_mode_uses_the_directory_that_owns_the_config(
 
 @patch("shutil.which")
 @patch("subprocess.run")
-def test_ruff_checking_no_files_is_not_reported_as_clean(
+def test_ruff_checking_no_files_is_not_credited_with_the_check(
     mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
 ) -> None:
-    """An ancestor's exclude can leave Ruff with nothing, which is not a pass.
+    """A tool that processed nothing must not be named as having run.
 
-    Now that a project's own config is honoured, its extend-exclude reaches
-    the files readability hands over, and Ruff answers by processing none of
-    them. Reporting that as a clean result is the failure the report type
-    exists to prevent.
+    An earlier version of this test asserted a non-zero exit and passed only
+    because the mock left pyrefly absent, taking the every-tool-is-missing
+    branch. What is actually guaranteed is narrower: ruff is not credited.
 
     Args:
         mock_run: The mocked subprocess.run function.
         mock_which: The mocked shutil.which function.
         tmp_path: The temporary directory fixture.
     """
-    mock_which.side_effect = lambda x: x if x == "ruff" else None
+    mock_which.side_effect = lambda x: x
     mock_run.return_value = MagicMock(
         returncode=0,
         stdout="",
         stderr="warning: No Python files found under the given path(s)\n",
     )
 
-    runner = CliRunner()
-    with runner.isolated_filesystem(temp_dir=tmp_path):
-        Path("pyproject.toml").write_text(
-            '[tool.ruff]\nextend-exclude = ["pkg"]\n'
-        )
-        Path("pkg").mkdir()
-        Path("pkg/mod.py").touch()
+    report = check_paths([_source_file(tmp_path, "mod.py")])
 
-        result = runner.invoke(cli, ["check", "pkg/mod.py"])
-
-    assert result.exit_code != 0
-    assert "No findings" not in result.stderr
+    assert "ruff" not in report.ran
+    assert not report.findings
 
 
 @pytest.mark.parametrize(
@@ -658,30 +652,79 @@ def test_every_recognized_config_filename_defers_to_the_project(
 @pytest.mark.parametrize(
     "pruned", (".venv", "node_modules", "__pycache__", ".git", ".ruff_cache")
 )
-def test_expanding_a_directory_skips_what_the_tools_would_skip(
+def test_a_config_in_a_pruned_directory_does_not_force_naming_files(
     tmp_path: Path, pruned: str
 ) -> None:
-    """Explicit paths bypass the exclusions a tool applies to its own walk.
+    """A virtualenv's own pyproject.toml is not the project disagreeing.
 
-    Pyrefly ignores project excludes for an explicit path, so handing it
-    every file under a directory type-checked a virtualenv's contents as
-    project code and failed the run on third-party stubs.
+    Taking it as disagreement would name every file individually, which costs
+    the tool its own excludes and ignore files for no reason.
 
     Args:
         tmp_path: The temporary directory fixture.
-        pruned: A directory name no tool should be handed files from.
+        pruned: A directory name whose contents are not the project's.
     """
     (tmp_path / "mod.py").touch()
     buried = tmp_path / pruned / "vendored"
     buried.mkdir(parents=True)
+    (buried / "pyproject.toml").write_text("[tool.ruff]\n")
     (buried / "dep.py").touch()
-    (buried / "dep.ts").touch()
 
-    plans = _get_tool_definitions(tmp_path, tmp_path)
+    plans = [
+        plan
+        for plan in _get_tool_definitions(tmp_path, tmp_path)
+        if plan.name == "ruff"
+    ]
 
-    targets = [target for plan in plans for target in plan.targets or ()]
-    assert str(tmp_path / "mod.py") in targets
-    assert not [target for target in targets if pruned in target]
+    assert len(plans) == 1
+    assert plans[0].targets is None
+    assert plans[0].check[-1] == str(tmp_path)
+
+
+def test_biome_starts_in_the_project_that_owns_its_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Biome resolves one config per run, anchored where it is started.
+
+    Handed a nested config from above, it refuses with "Found a nested root
+    configuration" and there is no way to check the file at all, so the only
+    way to reach that config is to start in the directory holding it.
+    """
+    web = tmp_path / "web"
+    web.mkdir()
+    (web / "biome.json").write_text('{"formatter": {"lineWidth": 120}}')
+    script = web / "app.ts"
+    script.touch()
+    monkeypatch.chdir(tmp_path)
+
+    plans = [
+        plan
+        for plan in _get_tool_definitions(Path("web/app.ts"), tmp_path)
+        if plan.name == "biome"
+    ]
+
+    assert len(plans) == 1
+    assert plans[0].cwd == web
+    assert "--config-path" not in plans[0].check
+    # Reachable from that directory only if named absolutely
+    assert plans[0].check[-1] == str(script.resolve())
+
+
+def test_biome_stays_put_when_the_project_is_where_it_started(
+    tmp_path: Path,
+) -> None:
+    """An unnecessary cwd would make every target need spelling out."""
+    (tmp_path / "biome.json").write_text("{}")
+    (tmp_path / "app.ts").touch()
+
+    plans = [
+        plan
+        for plan in _get_tool_definitions(Path("app.ts"), tmp_path)
+        if plan.name == "biome"
+    ]
+
+    assert plans[0].cwd is None
+    assert plans[0].check[-1] == "app.ts"
 
 
 def test_biome_ignore_discovery_stays_at_the_project_root(
@@ -750,12 +793,11 @@ def test_pyrefly_uses_project_mode_only_for_configured_directories(
     assert file_tools["pyrefly"].cwd is None
 
 
-def test_pyrefly_bundled_config_keeps_explicit_targets(
+def test_pyrefly_bundled_config_keeps_an_explicit_directory(
     tmp_path: Path,
 ) -> None:
     """Project mode cannot use a config rooted in the installed package."""
-    module = tmp_path / "main.py"
-    module.touch()
+    (tmp_path / "main.py").touch()
 
     with patch("shutil.which", side_effect=lambda name: name):
         tools = {
@@ -768,7 +810,7 @@ def test_pyrefly_bundled_config_keeps_explicit_targets(
         "check",
         "--config",
         str(_bundled_config("pyrefly")),
-        str(module),
+        str(tmp_path),
     )
     assert tools["pyrefly"].cwd is None
 
@@ -877,8 +919,8 @@ def test_check_paths_aggregates_str_and_path_inputs(
         failed={"biome"},
     )
     assert mock_check_path.call_args_list == [
-        call(Path("src/example.py"), project_root, fix=True),
-        call(Path("main.go"), project_root, fix=True),
+        call(Path("src/example.py"), project_root, project_root, fix=True),
+        call(Path("main.go"), project_root, project_root, fix=True),
     ]
 
 
@@ -914,14 +956,18 @@ def test_check_paths_defaults_project_root_to_cwd(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The public API discovers configuration from the caller's directory."""
+    """Tool installs come from the caller's directory, unbounded discovery.
+
+    With no repository above it there is nothing to bound the search with, and
+    an unbounded search is the one that agrees with the tools.
+    """
     monkeypatch.chdir(tmp_path)
     (tmp_path / "example.py").touch()
 
     check_paths([Path("example.py")])
 
     mock_check_path.assert_called_once_with(
-        Path("example.py"), tmp_path, fix=False
+        Path("example.py"), tmp_path, None, fix=False
     )
 
 
@@ -1273,11 +1319,11 @@ def test_mixed_directory_scopes_biome_to_owned_files(
     commands = [invocation.args[0] for invocation in mock_run.call_args_list]
     biome_commands = [command for command in commands if command[0] == "biome"]
     assert len(biome_commands) == 2
+    # The directory, which is what keeps its own ignore files applying
+    assert all(command[-1] == "project" for command in biome_commands)
     assert all(
-        command[-2:] == ["project/data.json", "project/script.js"]
-        for command in biome_commands
+        "--no-errors-on-unmatched" in command for command in biome_commands
     )
-    assert all("project" not in command for command in commands)
 
 
 @patch("shutil.which")
@@ -1396,13 +1442,18 @@ def test_gofmt_fix_failure_is_reported(
 def test_large_biome_directory_uses_bounded_commands(
     mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
 ) -> None:
-    """Explicit file scoping cannot exceed a conservative argv budget."""
+    """Naming files cannot exceed a conservative argv budget.
+
+    Only a tree that disagrees about configuration is named file by file, so
+    the nested biome.json is what puts this on the batching path at all.
+    """
     mock_which.side_effect = lambda name: name if name == "biome" else None
     mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
 
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path):
-        Path("src").mkdir()
+        Path("src/nested").mkdir(parents=True)
+        Path("src/nested/biome.json").write_text("{}")
         for index in range(600):
             name = f"{index:04d}_{'x' * 180}.js"
             Path("src", name).touch()

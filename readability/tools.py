@@ -111,35 +111,21 @@ def _has_project_config(
     return tool_name in data.get("tool", {})
 
 
-def _lexical_path(path: Path) -> Path:
-    """Make a path absolute without following links, as Ruff reads it.
-
-    Args:
-        path: The path to normalize.
-
-    Returns:
-        An absolute path with '..' removed and links intact.
-    """
-    return Path(os.path.abspath(path))
-
-
-def _repository_root(start: Path) -> Path:
+def _repository_root(start: Path) -> Path | None:
     """Find the repository the caller is in, which bounds discovery.
-
-    Bounding at the working directory instead would miss the config the
-    repository root declares, which Ruff reads.
 
     Args:
         start: The directory to search upward from.
 
     Returns:
-        The nearest ancestor holding a .git entry, or start if none does.
+        The nearest ancestor holding a .git entry, or None if none does, which
+        leaves discovery unbounded so an exported tree still agrees with Ruff.
     """
-    start = _lexical_path(start)
+    start = start.resolve()
     for directory in (start, *start.parents):
         if (directory / ".git").exists():
             return directory
-    return start
+    return None
 
 
 def _config_root(
@@ -150,20 +136,21 @@ def _config_root(
 ) -> Path | None:
     """Find the nearest directory up to a boundary that configures a tool.
 
-    Walking up is what the tools do; the boundary keeps the answer from
-    depending on whatever sits above the project.
+    Walking up is what the tools do. Both sides are resolved, as Ruff resolves
+    them, so one spelling of a path cannot answer differently from another.
 
     Args:
         path: The file or directory being checked.
-        boundary: The outermost directory the search may consider.
+        boundary: Outermost directory to consider, the filesystem root for
+            no bound.
         config_files: Dedicated config filenames the project may define.
         tool_name: The pyproject.toml section, or None if it has none.
 
     Returns:
         The nearest configuring directory, or None if none does.
     """
-    start = _lexical_path(path if path.is_dir() else path.parent)
-    root = _lexical_path(boundary)
+    start = (path if path.is_dir() else path.parent).resolve()
+    root = boundary.resolve()
 
     # Outside the boundary there is no project speaking for the path
     if start != root and root not in start.parents:
@@ -175,6 +162,33 @@ def _config_root(
         if directory == root:
             return None
     return None
+
+
+def _nested_config(
+    path: Path, config_files: Sequence[str], tool_name: str | None
+) -> bool:
+    """Report whether anything below a directory declares its own config.
+
+    Args:
+        path: The path being checked.
+        config_files: Dedicated config filenames the project may define.
+        tool_name: The pyproject.toml section, or None if it has none.
+
+    Returns:
+        True if some directory strictly below path configures the tool, which
+        is the only case a single target cannot describe.
+    """
+    if not path.is_dir():
+        return False
+    for directory, subdirectories, _ in os.walk(path):
+        subdirectories[:] = [
+            name for name in subdirectories if name not in PRUNED_DIRECTORIES
+        ]
+        if directory != str(path) and _has_project_config(
+            Path(directory), config_files, tool_name
+        ):
+            return True
+    return False
 
 
 def _vcs_args(project_root: Path) -> list[str]:
@@ -198,42 +212,56 @@ def _vcs_args(project_root: Path) -> list[str]:
 
 
 def _config_groups(
-    targets: Sequence[str], boundary: Path, tool: str
-) -> list[tuple[list[str], list[str]]]:
-    """Group a tool's files by the configuration arguments they need.
+    path: Path, boundary: Path, tool: str
+) -> list[tuple[Path | None, list[str] | None]]:
+    """Group what to hand a tool by the project each part belongs to.
 
-    A tool needs telling only when a file has no config, since it resolves
-    its own hierarchy, so the question is binary and two groups cover a tree.
+    One group is one project, which is the unit a tool can be pointed at:
+    Biome resolves a single config per run, anchored where it is started, so a
+    nested one is only reachable by starting there. When nothing below the
+    path disagrees, the whole path is one group and the tool is handed the
+    path itself, which is what keeps its own excludes and ignore files
+    applying. Naming files is reserved for a tree that genuinely disagrees.
 
     Args:
-        targets: The files the tool owns, as strings.
+        path: The file or directory being checked.
         boundary: The outermost directory config discovery may consider.
         tool: The tool's name, keying CONFIG_SOURCES.
 
     Returns:
-        One (config arguments, targets) pair per non-empty group. Configured
-        files carry no config argument, letting the tool apply its own.
+        One (config root, targets) pair per group, nearest root first and the
+        unconfigured remainder last. A root of None means no project
+        configures those files; targets of None means hand over the path.
     """
-    config_files, section, flag = CONFIG_SOURCES[tool]
-    configured: list[str] = []
-    unconfigured: list[str] = []
-    for target in targets:
-        root = _config_root(Path(target), boundary, config_files, section)
-        (configured if root is not None else unconfigured).append(target)
+    config_files, section, _ = CONFIG_SOURCES[tool]
+    own = _config_root(path, boundary, config_files, section)
 
-    bundled = [flag, str(_bundled_config(tool))]
-    return [
-        (args, group)
-        for args, group in (([], configured), (bundled, unconfigured))
-        if group
-    ]
+    if not _nested_config(path, config_files, section):
+        return [(own, None)]
+
+    groups: dict[Path | None, list[str]] = {}
+    for target in _matching_paths(path, TOOL_EXTENSIONS[tool]):
+        root = _config_root(Path(target), boundary, config_files, section)
+        groups.setdefault(root, []).append(target)
+
+    # Deepest project first, with the unconfigured remainder last
+    roots = sorted(
+        (root for root in groups if root is not None),
+        key=lambda root: len(root.parts),
+        reverse=True,
+    )
+    if None in groups:
+        return [(root, groups[root]) for root in [*roots, None]]
+    return [(root, groups[root]) for root in roots]
 
 
 def _plan(
     tool: str,
     binary: Sequence[str],
     config: Sequence[str],
-    targets: Sequence[str],
+    targets: Sequence[str] | None,
+    path: Path,
+    cwd: Path | None = None,
 ) -> ToolPlan:
     """Build one tool plan, every phase sharing its config and targets.
 
@@ -241,20 +269,27 @@ def _plan(
         tool: The tool's name, keying TOOL_PHASES and TOOL_EXTENSIONS.
         binary: The argv prefix that reaches the executable.
         config: Configuration arguments, empty when the file has its own.
-        targets: The files to hand the tool.
+        targets: Files to name, or None to hand over the path itself.
+        path: The path being checked, used when targets is None.
+        cwd: Directory to run in, for a tool that resolves config from it.
 
     Returns:
         The plan, with every phase the tool supports populated.
     """
+    argv = [str(path)] if targets is None else list(targets)
+    # A target is only reachable from another directory if it is absolute
+    if cwd is not None:
+        argv = [str(Path(target).resolve()) for target in argv]
     # Named rather than unpacked, so the type checker still sees the fields
     phases = {
-        phase: (*binary, *words, *config, *targets)
+        phase: (*binary, *words, *config, *argv)
         for phase, words in TOOL_PHASES[tool].items()
     }
     return ToolPlan(
         name=tool,
         extensions=TOOL_EXTENSIONS[tool],
-        targets=tuple(targets),
+        targets=None if targets is None else tuple(targets),
+        cwd=cwd,
         check=phases.get("check", ()),
         check_format=phases.get("check_format", ()),
         fix=phases.get("fix", ()),
@@ -413,59 +448,77 @@ def _tool_command(binary: str, project_root: Path) -> list[str]:
     return TOOL_RUNNERS.get(binary, [binary])
 
 
-def _get_tool_definitions(path: Path, project_root: Path) -> list[ToolPlan]:
+def _get_tool_definitions(
+    path: Path, project_root: Path, boundary: Path | None = None
+) -> list[ToolPlan]:
     """Define supported tools with their extensions and commands.
 
     Args:
-        path: The path being checked, expanded to the files each tool owns.
-        project_root: Bounds config discovery, and locates tool installs
-            and ignore files.
+        path: The path being checked.
+        project_root: Locates project-local tool installs and ignore files.
+        boundary: Outermost directory config discovery may consider, or None
+            for no bound. Defaults to project_root.
 
     Returns:
-        Plans, one per tool per group of files needing the same config. Two
-        can share a name, which is why the report tracks tools as a set.
+        Plans, one per tool per group needing the same config. Two can share a
+        name, which is why the report tracks tools as a set.
     """
+    if boundary is None:
+        boundary = project_root
     # Resolved once so every command for a tool reaches the same executable
     ruff = _tool_command("ruff", project_root)
     pyrefly = _tool_command("pyrefly", project_root)
     biome = _tool_command("biome", project_root)
-    python_files = _matching_paths(path, TOOL_EXTENSIONS["ruff"])
-    biome_files = _matching_paths(path, TOOL_EXTENSIONS["biome"])
-    gofmt_targets = _matching_paths(path, TOOL_EXTENSIONS["gofmt"])
+
+    def group_plans(tool: str, binary: Sequence[str]) -> list[ToolPlan]:
+        """Build a plan per project the tool's files belong to.
+
+        Args:
+            tool: The tool's name.
+            binary: The argv prefix that reaches the executable.
+
+        Returns:
+            One plan per group, each pointed at the project it belongs to.
+        """
+        built = []
+        for root, targets in _config_groups(path, boundary, tool):
+            config = []
+            if root is None:
+                flag = CONFIG_SOURCES[tool][2]
+                config = [flag, str(_bundled_config(tool))]
+                # Only Biome needs telling where the ignore files are
+                if tool == "biome":
+                    config += _vcs_args(project_root)
+            # Started elsewhere only when the project is elsewhere
+            cwd = root if root is not None and root != project_root else None
+            built.append(_plan(tool, binary, config, targets, path, cwd))
+        return built
 
     # Per tool: configuring one cannot opt a path out of the others
-    plans = [
-        _plan("ruff", ruff, config, targets)
-        for config, targets in _config_groups(
-            python_files, project_root, "ruff"
+    plans = group_plans("ruff", ruff)
+    plans.extend(group_plans("biome", biome))
+    plans.append(
+        _plan(
+            "gofmt",
+            ("gofmt",),
+            [],
+            _matching_paths(path, TOOL_EXTENSIONS["gofmt"]),
+            path,
         )
-    ]
-
-    for config, targets in _config_groups(biome_files, project_root, "biome"):
-        # Only the root can hold a repository-wide .gitignore
-        vcs = _vcs_args(project_root) if config else []
-        plans.append(_plan("biome", biome, [*config, *vcs], targets))
-
-    plans.append(_plan("gofmt", ("gofmt",), [], gofmt_targets))
+    )
 
     # Only a directory owning its config is a project check
     files, section, _ = CONFIG_SOURCES["pyrefly"]
-    pyrefly_root = _config_root(path, project_root, files, section)
-    if path.is_dir() and pyrefly_root == _lexical_path(path):
+    if _config_root(path, boundary, files, section) == path.resolve():
         plans.append(
             ToolPlan(
                 name="pyrefly",
                 check=(*pyrefly, "check"),
-                cwd=pyrefly_root,
+                cwd=path.resolve(),
                 extensions=TOOL_EXTENSIONS["pyrefly"],
             )
         )
         return plans
 
-    plans.extend(
-        _plan("pyrefly", pyrefly, config, targets)
-        for config, targets in _config_groups(
-            python_files, project_root, "pyrefly"
-        )
-    )
+    plans.extend(group_plans("pyrefly", pyrefly))
     return plans
