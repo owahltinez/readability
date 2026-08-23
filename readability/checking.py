@@ -12,6 +12,7 @@ from readability.tools import (
     ToolPlan,
     _command_batches,
     _get_tool_definitions,
+    _repository_root,
     _should_run_tool,
     _tool_is_installed,
 )
@@ -74,8 +75,10 @@ def check_paths(
     Args:
         paths: Files or directories to check, as strings or paths. Relative
             paths are interpreted from the current working directory.
-        project_root: Root used only to discover tool configuration. Defaults
-            to the current working directory; it does not rebase paths.
+        project_root: Bounds config discovery, so the same files get the
+            same verdict wherever the tree sits, and locates tool installs
+            and ignore files. Defaults to the repository the process is in.
+            It does not rebase paths.
         fix: Whether to apply automatic fixes.
 
     Returns:
@@ -85,7 +88,11 @@ def check_paths(
         FileNotFoundError: If any requested path does not exist. Every path is
             validated before any tools run.
     """
-    root = Path.cwd() if project_root is None else project_root
+    here = Path.cwd()
+    repository = _repository_root(here)
+    root = project_root if project_root is not None else (repository or here)
+    # A named root bounds the search; otherwise each path's repository does
+    boundary = project_root
     requested_paths = [Path(path) for path in paths]
     missing_path = next(
         (path for path in requested_paths if not path.exists()), None
@@ -95,7 +102,7 @@ def check_paths(
 
     report = CheckReport()
     for path in requested_paths:
-        path_report = _check_path(path, root, fix=fix)
+        path_report = _check_path(path, root, boundary, fix=fix)
         if not path_report.ran:
             path_report.unverified_paths.append(path)
         report.absorb(path_report)
@@ -103,13 +110,18 @@ def check_paths(
 
 
 def _check_path(
-    path: Path, project_root: Path, fix: bool = False
+    path: Path,
+    project_root: Path,
+    boundary: Path | None = None,
+    fix: bool = False,
 ) -> CheckReport:
     """Apply relevant tools to a single path.
 
     Args:
         path: The path (file or directory) to check.
-        project_root: The root used for native tool configuration discovery.
+        project_root: Locates tool installs and ignore files.
+        boundary: Outermost directory config discovery may consider, or
+            None to bound it by the path's own repository.
         fix: Whether to apply automatic fixes.
 
     Returns:
@@ -117,14 +129,16 @@ def _check_path(
     """
     logger.info("Checking path: %s", path)
 
+    if boundary is None:
+        boundary = _repository_root(path) or Path(path.resolve().anchor)
+
     # Iterate through all supported tool definitions
     report = CheckReport()
-    for tool in _get_tool_definitions(path, project_root):
+    for tool in _get_tool_definitions(path, project_root, boundary):
         if not _should_run_tool(tool, path):
             continue
 
-        # A tool that is wanted but absent leaves a hole in the coverage,
-        # which is not the same as a clean result
+        # A wanted but absent tool is a hole in coverage, not a clean result
         if not _tool_is_installed(tool):
             report.skipped.add(tool.name)
             continue
@@ -156,10 +170,7 @@ def _run_tool(
     target_count = len(tool.targets or ())
     try:
         if fix:
-            # Formatters rewrite files, fixers apply what they can. Both
-            # exit non-zero when something is left over, which is a finding
-            # rather than a failure, so the check below still gets to run
-            # and report what they could not deal with.
+            # Leftovers exit non-zero, which is a finding rather than a failure
             for phase in ("format", "fix"):
                 configured_command = getattr(tool, phase)
                 if configured_command:
@@ -208,8 +219,7 @@ def _run_tool(
                         f"{result.stdout}\n{result.stderr}"
                     )
 
-    # Failing to start, or running past the timeout, means this tool checked
-    # nothing. Whatever it managed before that stays in ran.
+    # Never starting, or timing out, means this tool checked nothing
     except (subprocess.SubprocessError, OSError) as e:
         logger.warning("Could not run %s: %s", tool.name, e)
         report.failed.add(tool.name)
@@ -227,14 +237,19 @@ def _tool_checked_files(
         result: The completed subprocess.
 
     Returns:
-        False when Biome explicitly reports that it checked zero files.
+        False when the tool explicitly reports that it processed no files.
     """
-    if tool_name != "biome":
+    # Biome says this for an unmatched target, Ruff when excludes cover them all
+    zero_file_reports = {
+        "biome": ("Checked 0 files", "Formatted 0 files"),
+        "ruff": ("No Python files found",),
+    }
+    summaries = zero_file_reports.get(tool_name)
+    if summaries is None:
         return True
+
     output = f"{result.stdout or ''}\n{result.stderr or ''}"
-    # Biome 2.x uses these summaries for an unmatched target.
-    zero_file_summaries = ("Checked 0 files", "Formatted 0 files")
-    return not any(summary in output for summary in zero_file_summaries)
+    return not any(summary in output for summary in summaries)
 
 
 def _capture_tool_command(

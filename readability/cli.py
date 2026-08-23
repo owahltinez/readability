@@ -60,8 +60,7 @@ def guide(
         _echo_languages()
         return
 
-    # Refusing beats picking a winner: a silent precedence rule is how the
-    # caller ends up reading the wrong thing without being told.
+    # Refusing beats a silent precedence rule the caller cannot see
     if full and reference:
         raise click.UsageError("--full takes the whole guide, so REF cannot.")
 
@@ -106,8 +105,7 @@ def _resolve_filenames(languages: Sequence[str]) -> list[str]:
                 f"Language '{language}' is not supported. Supported "
                 f"languages: {', '.join(sorted(LANGUAGE_MAP.keys()))}"
             )
-        # Aliases such as 'cpp' and 'c++' resolve to one guide, which is
-        # fetched once however many of its names were given
+        # Aliases share a guide, fetched once however many names were given
         if filename not in filenames:
             filenames.append(filename)
 
@@ -190,8 +188,7 @@ def check(paths: Sequence[str], fix: bool, verbose: bool) -> None:
             err=True,
         )
 
-    # A tool that could not start or outlived the timeout checked nothing,
-    # so its silence is not a pass however far the rest of the run got
+    # A tool that never ran checked nothing, so its silence is not a pass
     if report.failed:
         click.echo(
             f"Error: Could not run: {', '.join(sorted(report.failed))}. "
@@ -200,14 +197,11 @@ def check(paths: Sequence[str], fix: bool, verbose: bool) -> None:
         )
         sys.exit(1)
 
-    # Findings remain a failed check even when a tool reports that it could
-    # not process any files (for example, a Biome configuration error).
+    # Findings fail the check even if the tool processed no files
     if report.findings:
         sys.exit(1)
 
-    # Having run nothing is not a pass. Reporting it as one is how this
-    # command became a silent no-op wherever its tools were absent, gating
-    # nothing while every caller read the exit code as approval.
+    # Having run nothing is not a pass, it is a silent no-op gating nothing
     if not report.ran and report.skipped:
         click.echo(
             f"Error: Every tool for {len(paths)} path(s) is missing, so "
@@ -216,9 +210,7 @@ def check(paths: Sequence[str], fix: bool, verbose: bool) -> None:
         )
         sys.exit(1)
 
-    # No tool applying is a fact about the project rather than a fault: there
-    # is nothing to install and nothing to fix. It still cannot be reported
-    # as a clean result, because nothing was inspected.
+    # No tool applying is a fact, not a fault, but still not a clean result
     if not report.ran:
         click.echo(
             f"No tool applies to {len(paths)} path(s); nothing was checked.",
@@ -235,8 +227,7 @@ def check(paths: Sequence[str], fix: bool, verbose: bool) -> None:
             err=True,
         )
 
-    # Findings are the only thing this command printed, so a clean run said
-    # nothing at all and left the caller unable to tell it from a no-op.
+    # Without this a clean run printed nothing and read as a no-op
     click.echo(
         f"No findings in {checked_path_count} path(s) "
         f"({', '.join(sorted(report.ran))}).",
@@ -247,11 +238,7 @@ def check(paths: Sequence[str], fix: bool, verbose: bool) -> None:
 # Main entry point for the CLI
 def main() -> None:
     """Main entry point for the CLI."""
-    # Configure logging here rather than at import time so that importing this
-    # module as a library (e.g. from lemming) has no side effects
-    # WARNING, not INFO: everything logged below it narrates progress, which
-    # is what --verbose is for. Leaving it on meant there was no quiet mode
-    # and the flag could only add DEBUG on top.
+    # Configured here, not at import, so library use has no side effects
     logging.basicConfig(
         level=logging.WARNING,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
