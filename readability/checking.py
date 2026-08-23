@@ -12,6 +12,7 @@ from readability.tools import (
     ToolPlan,
     _command_batches,
     _get_tool_definitions,
+    _repository_root,
     _should_run_tool,
     _tool_is_installed,
 )
@@ -74,10 +75,13 @@ def check_paths(
     Args:
         paths: Files or directories to check, as strings or paths. Relative
             paths are interpreted from the current working directory.
-        project_root: Root used to find project-local tool installs and to
-            anchor ignore-file discovery. Defaults to the current working
-            directory; it does not rebase paths, and it does not bound
-            configuration discovery, which follows each checked path.
+        project_root: Root that bounds configuration discovery, locates
+            project-local tool installs, and anchors ignore-file discovery.
+            Bounding matters for callers scoring against a fixed baseline: the
+            same files get the same verdict wherever the tree sits, because
+            configuration above this root is not read. Defaults to the
+            repository the process is in, falling back to the working
+            directory. It does not rebase paths.
         fix: Whether to apply automatic fixes.
 
     Returns:
@@ -87,7 +91,9 @@ def check_paths(
         FileNotFoundError: If any requested path does not exist. Every path is
             validated before any tools run.
     """
-    root = Path.cwd() if project_root is None else project_root
+    root = (
+        _repository_root(Path.cwd()) if project_root is None else project_root
+    )
     requested_paths = [Path(path) for path in paths]
     missing_path = next(
         (path for path in requested_paths if not path.exists()), None
@@ -111,8 +117,8 @@ def _check_path(
 
     Args:
         path: The path (file or directory) to check.
-        project_root: The root used to find project-local tool installs and to
-            anchor ignore-file discovery.
+        project_root: The root bounding configuration discovery, locating
+            project-local tool installs, and anchoring ignore-file discovery.
         fix: Whether to apply automatic fixes.
 
     Returns:
@@ -230,14 +236,21 @@ def _tool_checked_files(
         result: The completed subprocess.
 
     Returns:
-        False when Biome explicitly reports that it checked zero files.
+        False when the tool explicitly reports that it processed no files.
     """
-    if tool_name != "biome":
+    # Biome 2.x uses these summaries for an unmatched target. Ruff says so
+    # when a project's own excludes cover every file it was handed, which
+    # honouring project configuration made reachable.
+    zero_file_reports = {
+        "biome": ("Checked 0 files", "Formatted 0 files"),
+        "ruff": ("No Python files found",),
+    }
+    summaries = zero_file_reports.get(tool_name)
+    if summaries is None:
         return True
+
     output = f"{result.stdout or ''}\n{result.stderr or ''}"
-    # Biome 2.x uses these summaries for an unmatched target.
-    zero_file_summaries = ("Checked 0 files", "Formatted 0 files")
-    return not any(summary in output for summary in zero_file_summaries)
+    return not any(summary in output for summary in summaries)
 
 
 def _capture_tool_command(

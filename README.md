@@ -154,9 +154,13 @@ The returned `CheckReport` records only whether findings occurred and which
 tools ran, were skipped, or failed. Detailed tool findings are still written as
 each tool runs. Every path is validated before any tool runs, and a missing one
 raises `FileNotFoundError` rather than being misreported as a finding. Relative
-paths remain relative to the process working directory. `project_root` locates
-project-local tool installs and roots ignore-file discovery; it does not bound
-configuration discovery, which follows each checked path instead.
+paths remain relative to the process working directory. `project_root` bounds
+configuration discovery, locates project-local tool installs, and roots
+ignore-file discovery. Because it bounds discovery, a caller that passes one
+gets the same verdict for the same files wherever they sit, which is what makes
+the result usable as a baseline. It defaults to the repository the process is
+in, so the command agrees with the tools rather than with the directory the
+caller happened to be standing in.
 
 ### Configuring Formats
 
@@ -176,9 +180,9 @@ into it through that tool's native configuration. Gofmt has no project settings.
 The bundled Biome file requires Biome 2.5 or later, matching the fallback
 runner's version floor.
 
-Configuration is looked for in the checked path's own directory and then its
-ancestors, which is where each canonical tool looks, so a package keeping its
-settings in a subdirectory is checked against them:
+Configuration is found per file, in the file's own directory and then its
+ancestors, which is where each canonical tool looks. A package keeping its
+settings in a subdirectory is checked against them however it is reached:
 
 ```bash
 # Uses web/biome.json, not the bundled default
@@ -186,14 +190,22 @@ readability check web/app.ts
 
 # Uses the repository root's [tool.ruff], not the bundled default
 cd pkg && readability check module.py
+
+# pkg/ is checked against pkg/pyproject.toml, the rest against the defaults
+readability check .
 ```
 
+A tool is only told which configuration to use when the file has none, because
+each one resolves its own hierarchy: a single Ruff invocation over two packages
+declaring different line lengths reports each against its own. So a mixed tree
+needs no choosing between configurations, and the bundled default never
+overrides one the project declared.
+
 Discovery is per tool, so configuring one leaves the others on their bundled
-defaults. One limitation is worth knowing: a bundled default flattens the
-hierarchy below the path it is applied to. Checking a directory that declares no
-configuration of its own applies the bundled default to everything under it,
-including packages further down that declare their own. Name those paths, or
-configure the tool at the directory being checked.
+defaults. It is also bounded, by the repository the command runs in, or by
+`project_root` when calling `check_paths` directly. Configuration outside that
+boundary is not read, so the same paths get the same answer wherever the
+repository sits.
 
 ## Style Guides
 

@@ -17,6 +17,25 @@ from readability.tools import (
 )
 
 
+def _source_file(directory: Path, name: str) -> Path:
+    """Create an empty source file for tool-resolution tests.
+
+    Tool plans now carry the files they will be handed, so a plan only exists
+    for a path that has files in it. Resolution tests therefore need a file
+    that exists rather than a bare name.
+
+    Args:
+        directory: Where to create the file.
+        name: The filename, whose suffix decides the owning tool.
+
+    Returns:
+        The created file's path.
+    """
+    path = directory / name
+    path.touch()
+    return path
+
+
 @patch("shutil.which")
 @patch("subprocess.run")
 def test_check_command_ruff(
@@ -147,14 +166,15 @@ def test_check_command_directory(
     assert result.exit_code == 0
     cfg = str(_bundled_config("ruff"))
     called_cmds = [call.args[0] for call in mock_run.call_args_list]
-    # Verify ruff was called with the directory 'subdir'
+    # A directory is expanded to the files it holds, which is what lets each
+    # file be checked against the configuration that governs it
     assert [
         "ruff",
         "check",
         "--force-exclude",
         "--config",
         cfg,
-        "subdir",
+        "subdir/script.py",
     ] in called_cmds
 
 
@@ -387,44 +407,101 @@ def test_bundled_configs_apply_when_no_ancestor_configures_a_tool(
     assert str(_bundled_config("pyrefly")) in tools["pyrefly"].check
 
 
-def test_project_root_does_not_bound_the_config_search(tmp_path: Path) -> None:
-    """The working directory is where the caller stood, not where config ends.
+def test_a_directory_target_honours_a_nested_package_config(
+    tmp_path: Path,
+) -> None:
+    """A configured package keeps its style when reached through a directory.
 
-    Bounding the search at project_root reproduced the original bug one level
-    up: `cd pkg && readability check mod.py` reported findings against the
-    bundled defaults while Ruff, run the same way, read the repository root's
-    config and passed.
+    Choosing one config for a whole run cannot describe a mixed tree, so the
+    bundled default was forced over packages that had rejected it, and --fix
+    rewrote them irreversibly. The tools resolve per file themselves, so the
+    only question is whether a file has a config at all.
     """
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "pyproject.toml").write_text("[tool.ruff]\nline-length = 200\n")
+    configured = package / "mod.py"
+    configured.touch()
+    bare = tmp_path / "loose.py"
+    bare.touch()
+
+    plans = [
+        plan
+        for plan in _get_tool_definitions(tmp_path, tmp_path)
+        if plan.name == "ruff"
+    ]
+    by_target = {
+        target: plan for plan in plans for target in plan.targets or ()
+    }
+
+    assert "--config" not in by_target[str(configured)].check
+    assert str(_bundled_config("ruff")) in by_target[str(bare)].check
+
+
+def test_discovery_stops_at_the_declared_root(tmp_path: Path) -> None:
+    """A caller that names a root gets the same answer wherever it sits.
+
+    check_paths is used to score output against a fixed baseline, so a
+    pyproject.toml above the declared root silently re-baselining every run
+    is worse than disagreeing with Ruff about a file nobody asked about.
+    """
+    (tmp_path / "pyproject.toml").write_text("[tool.ruff]\nline-length = 200\n")
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    module = workspace / "mod.py"
+    module.touch()
+
+    plans = [
+        plan
+        for plan in _get_tool_definitions(module, workspace)
+        if plan.name == "ruff"
+    ]
+
+    assert str(_bundled_config("ruff")) in plans[0].check
+
+
+def test_a_symlinked_directory_is_not_followed_out_of_the_project(
+    tmp_path: Path,
+) -> None:
+    """Ruff reads the path it was given, so discovery must not resolve links."""
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "pyproject.toml").write_text("[tool.ruff]\nline-length = 200\n")
+    outside = tmp_path / "elsewhere" / "pkg"
+    outside.mkdir(parents=True)
+    (outside / "mod.py").touch()
+    (project / "vendored").symlink_to(outside)
+
+    plans = [
+        plan
+        for plan in _get_tool_definitions(project / "vendored", project)
+        if plan.name == "ruff"
+    ]
+
+    assert "--config" not in plans[0].check
+
+
+def test_the_cli_bounds_discovery_at_the_repository_not_the_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Standing in a package must not hide the repository's own config.
+
+    The bound has to be the project, not wherever the caller happened to be:
+    bounded at the working directory, `cd pkg && readability check mod.py`
+    reports findings against the bundled defaults while Ruff, run the same
+    way, reads the repository root's config and passes.
+    """
+    (tmp_path / ".git").mkdir()
     (tmp_path / "pyproject.toml").write_text("[tool.ruff]\nline-length = 200\n")
     package = tmp_path / "pkg"
     package.mkdir()
-    module = package / "mod.py"
-    module.touch()
+    (package / "mod.py").touch()
+    monkeypatch.chdir(package)
 
-    tools = {tool.name: tool for tool in _get_tool_definitions(module, package)}
+    with patch("readability.checking._check_path") as check_path:
+        check_paths([Path("mod.py")])
 
-    assert "--config" not in tools["ruff"].check
-
-
-def test_a_nested_checkout_does_not_bound_the_config_search(
-    tmp_path: Path,
-) -> None:
-    """No canonical tool stops at .git, so neither can discovery.
-
-    Stopping there would make the same source tree behave differently as a
-    checkout than as an exported tarball, and disagree with Ruff either way.
-    """
-    (tmp_path / "pyproject.toml").write_text("[tool.ruff]\nline-length = 200\n")
-    inner = tmp_path / "vendored"
-    (inner / ".git").mkdir(parents=True)
-    module = inner / "mod.py"
-    module.touch()
-
-    tools = {
-        tool.name: tool for tool in _get_tool_definitions(module, tmp_path)
-    }
-
-    assert "--config" not in tools["ruff"].check
+    assert check_path.call_args.args[1] == tmp_path
 
 
 def test_relative_and_absolute_paths_discover_the_same_config(
@@ -433,9 +510,9 @@ def test_relative_and_absolute_paths_discover_the_same_config(
     """A relative path must not run out of parents at the working directory.
 
     Path("mod.py").parent is Path("."), whose only candidate is the working
-    directory itself, so an unresolved walk can never look above it. Standing
-    in the package, that hides the repository root's config and checks the
-    same file against a different style depending on how it was named.
+    directory itself, so an unnormalized walk can never look above it, and
+    the same file would be checked against a different style depending on
+    how it was named.
     """
     (tmp_path / "pyproject.toml").write_text("[tool.ruff]\nline-length = 200\n")
     package = tmp_path / "pkg"
@@ -445,13 +522,13 @@ def test_relative_and_absolute_paths_discover_the_same_config(
     monkeypatch.chdir(package)
 
     def ruff_config(path: Path) -> tuple[str, ...]:
-        tools = {
-            tool.name: tool for tool in _get_tool_definitions(path, package)
-        }
+        plans = [
+            plan
+            for plan in _get_tool_definitions(path, tmp_path)
+            if plan.name == "ruff"
+        ]
         return tuple(
-            argument
-            for argument in tools["ruff"].check
-            if argument == "--config"
+            argument for argument in plans[0].check if argument == "--config"
         )
 
     assert ruff_config(Path("mod.py")) == ruff_config(module)
@@ -478,7 +555,11 @@ def test_pyrefly_project_mode_needs_the_config_at_the_checked_directory(
             tool.name: tool for tool in _get_tool_definitions(package, tmp_path)
         }
 
-    assert tools["pyrefly"].check == ("pyrefly", "check", str(package))
+    assert tools["pyrefly"].check == (
+        "pyrefly",
+        "check",
+        str(package / "mod.py"),
+    )
     assert tools["pyrefly"].cwd is None
 
 
@@ -497,7 +578,104 @@ def test_pyrefly_project_mode_uses_the_directory_that_owns_the_config(
         }
 
     assert tools["pyrefly"].check == ("pyrefly", "check")
-    assert tools["pyrefly"].cwd == package.resolve()
+    assert tools["pyrefly"].cwd == package
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_ruff_checking_no_files_is_not_reported_as_clean(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """An ancestor's exclude can leave Ruff with nothing, which is not a pass.
+
+    Now that a project's own config is honoured, its extend-exclude reaches
+    the files readability hands over, and Ruff answers by processing none of
+    them. Reporting that as a clean result is the failure the report type
+    exists to prevent.
+
+    Args:
+        mock_run: The mocked subprocess.run function.
+        mock_which: The mocked shutil.which function.
+        tmp_path: The temporary directory fixture.
+    """
+    mock_which.side_effect = lambda x: x if x == "ruff" else None
+    mock_run.return_value = MagicMock(
+        returncode=0,
+        stdout="",
+        stderr="warning: No Python files found under the given path(s)\n",
+    )
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("pyproject.toml").write_text(
+            '[tool.ruff]\nextend-exclude = ["pkg"]\n'
+        )
+        Path("pkg").mkdir()
+        Path("pkg/mod.py").touch()
+
+        result = runner.invoke(cli, ["check", "pkg/mod.py"])
+
+    assert result.exit_code != 0
+    assert "No findings" not in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("filename", "tool", "source", "flag"),
+    (
+        ("ruff.toml", "ruff", "mod.py", "--config"),
+        (".ruff.toml", "ruff", "mod.py", "--config"),
+        ("pyrefly.toml", "pyrefly", "mod.py", "--config"),
+        ("biome.json", "biome", "app.ts", "--config-path"),
+        ("biome.jsonc", "biome", "app.ts", "--config-path"),
+    ),
+)
+def test_every_recognized_config_filename_defers_to_the_project(
+    tmp_path: Path, filename: str, tool: str, source: str, flag: str
+) -> None:
+    """Each documented filename has to be honoured, not just the common one.
+
+    Args:
+        tmp_path: The temporary directory fixture.
+        filename: The config filename the project declares.
+        tool: The tool that filename configures.
+        source: A source file that tool owns.
+        flag: The tool's flag for naming a config.
+    """
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / filename).write_text("{}" if "biome" in filename else "")
+    (package / source).touch()
+
+    plans = [
+        plan
+        for plan in _get_tool_definitions(package, tmp_path)
+        if plan.name == tool
+    ]
+
+    assert plans, f"no {tool} plan for {filename}"
+    assert all(flag not in plan.check for plan in plans)
+
+
+def test_biome_ignore_discovery_stays_at_the_project_root(
+    tmp_path: Path,
+) -> None:
+    """A repository-wide ignore file sits at the root, not beside the files.
+
+    Config discovery follows the checked path, but ignore files cannot: only
+    the root can hold the .gitignore that covers the whole repository.
+    """
+    (tmp_path / ".gitignore").write_text("dist/\n")
+    web = tmp_path / "web"
+    web.mkdir()
+    (web / "app.ts").touch()
+
+    plans = [
+        plan
+        for plan in _get_tool_definitions(web, tmp_path)
+        if plan.name == "biome"
+    ]
+
+    assert f"--vcs-root={tmp_path}" in plans[0].check
 
 
 def test_a_pyproject_biome_section_does_not_suppress_the_bundled_config(
@@ -544,11 +722,12 @@ def test_pyrefly_uses_project_mode_only_for_configured_directories(
     assert file_tools["pyrefly"].cwd is None
 
 
-def test_pyrefly_bundled_config_keeps_an_explicit_directory(
+def test_pyrefly_bundled_config_keeps_explicit_targets(
     tmp_path: Path,
 ) -> None:
     """Project mode cannot use a config rooted in the installed package."""
-    (tmp_path / "main.py").touch()
+    module = tmp_path / "main.py"
+    module.touch()
 
     with patch("shutil.which", side_effect=lambda name: name):
         tools = {
@@ -561,7 +740,7 @@ def test_pyrefly_bundled_config_keeps_an_explicit_directory(
         "check",
         "--config",
         str(_bundled_config("pyrefly")),
-        str(tmp_path),
+        str(module),
     )
     assert tools["pyrefly"].cwd is None
 
@@ -1416,7 +1595,9 @@ def test_biome_is_invoked_by_its_real_package_name(tmp_path: Path) -> None:
     """
     tools = {
         tool.name: tool
-        for tool in _get_tool_definitions(tmp_path / "f.ts", tmp_path)
+        for tool in _get_tool_definitions(
+            _source_file(tmp_path, "f.ts"), tmp_path
+        )
     }
     biome = tools["biome"]
 
@@ -1438,7 +1619,9 @@ def test_node_tools_prefer_a_project_local_install(tmp_path: Path) -> None:
 
     tools = {
         tool.name: tool
-        for tool in _get_tool_definitions(tmp_path / "f.ts", tmp_path)
+        for tool in _get_tool_definitions(
+            _source_file(tmp_path, "f.ts"), tmp_path
+        )
     }
 
     cmd = tools["biome"].check
@@ -1450,7 +1633,9 @@ def test_node_tools_fall_back_to_npx(tmp_path: Path) -> None:
     """With nothing installed, npx stays the way to reach them."""
     tools = {
         tool.name: tool
-        for tool in _get_tool_definitions(tmp_path / "f.ts", tmp_path)
+        for tool in _get_tool_definitions(
+            _source_file(tmp_path, "f.ts"), tmp_path
+        )
     }
 
     cmd = tools["biome"].check
@@ -1468,7 +1653,9 @@ def test_python_tools_fall_back_to_a_floored_runner(tmp_path: Path) -> None:
     with patch("shutil.which", return_value=None):
         tools = {
             tool.name: tool
-            for tool in _get_tool_definitions(tmp_path / "f.py", tmp_path)
+            for tool in _get_tool_definitions(
+                _source_file(tmp_path, "f.py"), tmp_path
+            )
         }
 
     ruff = tools["ruff"].check
@@ -1485,7 +1672,9 @@ def test_an_installed_tool_beats_the_runner(tmp_path: Path) -> None:
     with patch("shutil.which", side_effect=lambda x: f"/usr/bin/{x}"):
         tools = {
             tool.name: tool
-            for tool in _get_tool_definitions(tmp_path / "f.py", tmp_path)
+            for tool in _get_tool_definitions(
+                _source_file(tmp_path, "f.py"), tmp_path
+            )
         }
 
     assert tools["ruff"].check[0] == "/usr/bin/ruff"
@@ -1506,7 +1695,9 @@ def test_a_local_file_that_cannot_run_is_not_chosen(tmp_path: Path) -> None:
     with patch("shutil.which", return_value=None):
         tools = {
             tool.name: tool
-            for tool in _get_tool_definitions(tmp_path / "f.ts", tmp_path)
+            for tool in _get_tool_definitions(
+                _source_file(tmp_path, "f.ts"), tmp_path
+            )
         }
 
     assert tools["biome"].check[0] == "npx"
@@ -1529,7 +1720,9 @@ def test_resolution_ignores_a_project_virtualenv(tmp_path: Path) -> None:
     with patch("shutil.which", return_value=None):
         tools = {
             tool.name: tool
-            for tool in _get_tool_definitions(tmp_path / "f.py", tmp_path)
+            for tool in _get_tool_definitions(
+                _source_file(tmp_path, "f.py"), tmp_path
+            )
         }
 
     assert str(binary) not in tools["ruff"].check
