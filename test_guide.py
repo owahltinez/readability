@@ -159,8 +159,7 @@ def test_sync_command(
         result = runner.invoke(cli, ["sync"])
 
         assert result.exit_code == 0
-        # Progress is an outcome the caller asked for, so it is reported
-        # regardless of log level rather than logged as narration.
+        # An asked-for outcome, so reported regardless of log level
         assert "Sync complete" in result.stderr
         # Check if at least one guide was "synced" (written to tmp_path)
         assert len(os.listdir(tmp_path)) > 0

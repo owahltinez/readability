@@ -55,10 +55,7 @@ LANGUAGE_MAP = {
 
 BASE_URL = "https://google.github.io/styleguide/"
 
-# Style guides are dense with snake_case and dunder identifiers, and escaping
-# their underscores leaves 'from \_\_future\_\_ import' in the text a caller
-# greps or reads. CommonMark would render a bare '__future__' as emphasis, but
-# these guides are consumed as plain text, where fidelity matters more.
+# Escaping underscores would leave 'from \_\_future\_\_ import' in the text
 MARKDOWNIFY_OPTIONS = {"heading_style": "ATX", "escape_underscores": False}
 
 
