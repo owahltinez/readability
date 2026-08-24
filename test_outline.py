@@ -456,10 +456,7 @@ def test_cli_section_heading_containing_an_angle_bracket(
     assert "Array body." in result.stdout
 
 
-# The heading scanner is deliberately not a Markdown parser (see the note on
-# _iter_heading_lines). These tests are the evidence for that decision: the
-# scope it covers, the constructs it rejects, and its behaviour over every
-# guide actually shipped. A failure here means the scope has been outgrown.
+# Evidence the scanner need not be a Markdown parser; a failure means it is
 
 
 def test_heading_scanner_rejects_non_headings() -> None:
@@ -551,8 +548,7 @@ def test_every_shipped_guide_parses_into_unique_sections() -> None:
             f"{language}: duplicate positional indices"
         )
 
-        # A heading taken from inside a fence would carry a comment marker
-        # or a shebang, neither of which appears in a real guide heading.
+        # A fenced line would carry a comment marker or a shebang
         for heading in headings:
             assert not heading.title.startswith("!"), (
                 f"{language}: shebang parsed as heading: {heading.title!r}"
@@ -575,9 +571,7 @@ def test_every_shipped_guide_heading_is_addressable() -> None:
         )
         assert titles[0] is headings[0], f"{language}: title is not first"
 
-        # An index alone is not always enough: where a guide prints its own
-        # numbers those drift from the tree, so one string can name two
-        # headings. What must always hold is that some reference resolves.
+        # A guide's own numbers drift, so only 'some reference resolves' holds
         for position, heading in enumerate(headings):
             reference = _unique_reference(headings, position).strip('"')
             matches = find_headings(headings, reference)
@@ -587,9 +581,7 @@ def test_every_shipped_guide_heading_is_addressable() -> None:
             )
 
 
-# Words the corpus uses often enough to exercise many sections at once.
-# 'truefalse' appears only inside pyguide's anchors, which is the shape that
-# used to be credited to whichever section happened to precede them.
+# Common words, plus 'truefalse' which appears only inside pyguide's anchors
 MENTION_PROBES = (
     "truefalse",
     "indent",

@@ -8,24 +8,19 @@ from typing import Any
 
 import click
 
-# A fence opens or closes a code block; anything inside is sample code, not
-# document structure. Guides for `#`-commented languages (shell, Python) would
-# otherwise report hundreds of code comments as headings.
+# Inside a fence is sample code, where a '#' comment is not a heading
 FENCE_PATTERN = re.compile(r"^\s{0,3}(?:```|~~~)")
 
-# Closing hashes are optional in ATX headings and must be space-separated, so
-# a title such as 'C#' keeps its trailing character.
+# Closing hashes are space-separated, so a title like 'C#' keeps its own
 HEADING_PATTERN = re.compile(r"^(#{1,6})\s+(.*?)(?:\s+#+)?\s*$")
 
-# A section number the document itself prints, e.g. '2.2' in '2.2 Imports'.
+# A number the document prints itself, e.g. '2.2' in '2.2 Imports'
 DOCUMENT_NUMBER_PATTERN = re.compile(r"^(\d+(?:\.\d+)*)\.?\s+(.+)$")
 
-# Guides put a heading's link targets on the lines above it, which would
-# otherwise trail the end of the preceding section.
+# Link targets sit above their heading, not at the end of the one before
 ANCHOR_PATTERN = re.compile(r'^<a id="[^"]*"></a>$')
 
-# The separator in a scoped reference such as 'Imports > Decision'. Spaces on
-# both sides are required so that a heading like '`Array<T>` Type' stays whole.
+# Scoped reference separator; spaces required so '`Array<T>` Type' stays whole
 PATH_SEPARATOR_PATTERN = re.compile(r"\s+>\s+")
 
 
@@ -148,8 +143,7 @@ def parse_headings(content: str) -> list[Heading]:
     if not raw:
         return []
 
-    # Only three of the shipped guides number their headings. A dotted number
-    # ('2.2') is the reliable signal; a bare leading digit is not.
+    # A dotted number is the reliable signal; a bare leading digit is not
     document_numbers = [
         match.group(1)
         for _, _, text in raw
@@ -157,8 +151,7 @@ def parse_headings(content: str) -> list[Heading]:
     ]
     numbered = any("." in number for number in document_numbers)
 
-    # A lone top-level heading is the document title: it roots the tree rather
-    # than being the first section, so numbering starts with its children.
+    # A lone top-level heading is the title, so numbering starts below it
     top_level = min(level for _, level, _ in raw)
     top_level_lines = [line for line, level, _ in raw if level == top_level]
     title_line = top_level_lines[0] if len(top_level_lines) == 1 else None
@@ -169,12 +162,7 @@ def parse_headings(content: str) -> list[Heading]:
         index = "" if line == title_line else _next_index(open_headings, level)
         number, title = _split_document_number(text, numbered)
 
-        # A guide that numbers its own sections is the authority on what they
-        # are called, so its numbers address them. A positional index would
-        # drift wherever the guide skips one — pyguide has no 2.15 at all,
-        # and calling its 2.16 by that name would cite a section that does
-        # not exist. The tree still advances above, so headings the guide
-        # leaves unnumbered keep a positional index to be reachable by.
+        # A guide's own numbers address its sections; an index would drift
         if number:
             index = number
         headings.append(
@@ -203,10 +191,7 @@ def _slugify(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
 
 
-# Sections this long are worth warning about before one is fetched. Measured
-# over the shipped corpus, it marks the 4% that are expensive while leaving
-# the rest unannotated: a size on every line would read '0' on 59% of them,
-# which is noise in the one output whose job is to be scanned quickly.
+# Marks the expensive 4% of the corpus; a size on every line would be noise
 LARGE_SECTION_WORDS = 1200
 
 
@@ -263,8 +248,7 @@ def format_outline(headings: Sequence[Heading], content: str = "") -> str:
             section = extract_section(content, headings, position)
             size = _format_size(len(section.split()))
 
-        # The index already carries the guide's own number where it has one,
-        # so printing the heading verbatim would show it twice.
+        # The index already carries the guide's number where it has one
         lines.append(f"{indent}{prefix}{heading.title}{size}")
 
     return "\n".join(lines)
@@ -281,8 +265,7 @@ def _matches_component(heading: Heading, component: str, exact: bool) -> bool:
     Returns:
         True if the component identifies the heading.
     """
-    # Numbers are only ever compared in full; a substring of a number would
-    # match unrelated sections.
+    # Numbers compare in full; a substring would match unrelated sections
     wanted = component.strip().rstrip(".")
     if wanted and wanted in {heading.index, heading.number}:
         return True
@@ -369,8 +352,7 @@ def find_headings(headings: Sequence[Heading], reference: str) -> list[int]:
     if not components:
         return []
 
-    # Prefer whole matches; fall back to substrings only when nothing matches
-    # in full, so 'Imports' does not also select 'Imports and Exports'.
+    # Whole matches first, so 'Imports' does not select 'Imports and Exports'
     for exact in (True, False):
         matches = [
             position
@@ -512,9 +494,7 @@ def find_mentions(
 
     lines = content.splitlines()
 
-    # Only an indexed heading can be offered. The document title has no index
-    # because it is the whole guide rather than a section within it, so
-    # crediting the preamble to it would suggest reading everything.
+    # The title has no index, so crediting it would suggest reading everything
     sections = [
         (position, _section_bounds(lines, headings, position))
         for position in range(len(headings))
@@ -526,10 +506,7 @@ def find_mentions(
         if needle not in line.lower():
             continue
 
-        # Bounds nest, so the last section still covering the line is the
-        # innermost one that prints it. A section sheds the anchors of the
-        # heading below it, and those fall to an ancestor rather than to the
-        # section they merely trail.
+        # Bounds nest, so the last one covering a line is what prints it
         holders = [
             position
             for position, (start, end) in sections
@@ -577,8 +554,7 @@ def _echo_outline(content: str, language: str) -> None:
     example = _example_reference(headings)
     if example:
         count = sum(1 for heading in headings if heading.index)
-        # stdout is block-buffered when redirected, so without this the hint
-        # lands above the outline it is meant to follow
+        # Redirected stdout is block-buffered, so the hint would land first
         sys.stdout.flush()
         click.echo(
             f"# {count} sections · print one:  "
@@ -656,8 +632,7 @@ def _select_section(content: str, reference: str, language: str) -> str:
     if not matches:
         _report_no_heading(content, headings, reference, language)
 
-    # Reporting every candidate beats returning the first one silently, since
-    # guides repeat headings ('Decision' appears under every Python rule).
+    # Guides repeat headings, so name every candidate rather than guess
     if len(matches) > 1:
         click.echo(
             f"Error: '{reference}' matches {len(matches)} headings in the "
