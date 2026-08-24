@@ -1,21 +1,20 @@
 """Command-line interface for readability."""
 
+from collections.abc import Sequence
 import logging
 import os
 import sys
-from collections.abc import Sequence
 
 import click
 
 from readability.checking import check_paths
-from readability.guide import (
-    LANGUAGE_MAP,
-    get_guide,
-    get_guides_dir,
-    get_local_path,
-    refresh_guide,
-)
-from readability.outline import _echo_outline, _select_section
+from readability.guide import get_guide
+from readability.guide import get_guides_dir
+from readability.guide import get_local_path
+from readability.guide import LANGUAGE_MAP
+from readability.guide import refresh_guide
+from readability.outline import _echo_outline
+from readability.outline import _select_section
 
 logger = logging.getLogger("readability")
 

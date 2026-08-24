@@ -1,23 +1,21 @@
 import logging
 import os
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
+from unittest.mock import patch
 
 from click.testing import CliRunner
 
-from readability.cli import cli, main
-from readability.guide import (
-    LANGUAGE_MAP,
-    get_local_path,
-)
-from readability.outline import (
-    _iter_heading_lines,
-    _unique_reference,
-    extract_section,
-    find_headings,
-    find_mentions,
-    parse_headings,
-)
+from readability.cli import cli
+from readability.cli import main
+from readability.guide import get_local_path
+from readability.guide import LANGUAGE_MAP
+from readability.outline import _iter_heading_lines
+from readability.outline import _unique_reference
+from readability.outline import extract_section
+from readability.outline import find_headings
+from readability.outline import find_mentions
+from readability.outline import parse_headings
 
 NUMBERED_GUIDE = """# Sample Style Guide
 

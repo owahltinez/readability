@@ -14,6 +14,14 @@ ignore = ["PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLR2004"]
 [lint.pydocstyle]
 convention = "google"
 
+[lint.isort]
+# Mirrors isort's google profile; its lexicographical and group-by-package
+# options have no ruff equivalent
+force-single-line = true
+force-sort-within-sections = true
+single-line-exclusions = ["typing"]
+order-by-type = false
+
 [lint.per-file-ignores]
 # Docstring requirements are noise in test files
 "test_*.py" = ["D"]

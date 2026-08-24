@@ -1,20 +1,21 @@
 import json
+from pathlib import Path
 import subprocess
 import tomllib
-from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import call
+from unittest.mock import MagicMock
+from unittest.mock import patch
 
-import pytest
 from click.testing import CliRunner
+import pytest
 
-from readability.checking import CheckReport, check_paths
+from readability.checking import check_paths
+from readability.checking import CheckReport
 from readability.cli import cli
-from readability.tools import (
-    TOOL_RUNNERS,
-    _bundled_config,
-    _get_tool_definitions,
-    _has_project_config,
-)
+from readability.tools import _bundled_config
+from readability.tools import _get_tool_definitions
+from readability.tools import _has_project_config
+from readability.tools import TOOL_RUNNERS
 
 
 def _source_file(directory: Path, name: str) -> Path:
@@ -1034,6 +1035,14 @@ def test_bundled_default_configs_are_valid() -> None:
     ruff_config = tomllib.loads(_bundled_config("ruff").read_text())
     assert ruff_config["line-length"] == 80
     assert ruff_config["lint"]["pydocstyle"]["convention"] == "google"
+
+    # Import sorting mirrors isort's google profile
+    assert ruff_config["lint"]["isort"] == {
+        "force-single-line": True,
+        "force-sort-within-sections": True,
+        "single-line-exclusions": ["typing"],
+        "order-by-type": False,
+    }
 
 
 @patch("readability.checking._check_path")
