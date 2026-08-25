@@ -1,9 +1,10 @@
 """Parse, search, and render style-guide outlines."""
 
+from collections.abc import Iterator
+from collections.abc import Sequence
+from dataclasses import dataclass
 import re
 import sys
-from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
 from typing import Any
 
 import click

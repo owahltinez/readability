@@ -47,6 +47,12 @@ ignore = ["PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLR2004"]
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
+[tool.ruff.lint.isort]
+force-single-line = true
+force-sort-within-sections = true
+single-line-exclusions = ["typing"]
+order-by-type = false
+
 [tool.ruff.lint.per-file-ignores]
 "test_*.py" = ["D"]
 "*_test.py" = ["D"]

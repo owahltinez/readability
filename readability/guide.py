@@ -1,14 +1,15 @@
 """Fetch and cache Google style guides."""
 
+from importlib.resources import files
 import logging
 import os
 import warnings
-from importlib.resources import files
 
+from bs4 import BeautifulSoup
+from bs4 import XMLParsedAsHTMLWarning
 import click
-import requests
-from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 from markdownify import markdownify as md
+import requests
 
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 

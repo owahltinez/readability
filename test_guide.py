@@ -1,20 +1,19 @@
 import os
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
+from unittest.mock import patch
 
 import click
+from click.testing import CliRunner
 import pytest
 import requests
-from click.testing import CliRunner
 
 from readability.cli import cli
-from readability.guide import (
-    convert_to_markdown,
-    get_guide,
-    get_guide_content,
-    get_guides_dir,
-    get_local_path,
-)
+from readability.guide import convert_to_markdown
+from readability.guide import get_guide
+from readability.guide import get_guide_content
+from readability.guide import get_guides_dir
+from readability.guide import get_local_path
 
 
 def test_get_guide_unsupported() -> None:

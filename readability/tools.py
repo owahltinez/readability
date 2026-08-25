@@ -1,13 +1,13 @@
 """Build executable plans for readability's canonical tools."""
 
-import logging
-import os
-import shutil
-import tomllib
 from collections.abc import Sequence
 from dataclasses import dataclass
 from importlib.resources import files
+import logging
+import os
 from pathlib import Path
+import shutil
+import tomllib
 
 logger = logging.getLogger("readability")
 

@@ -1,21 +1,19 @@
 """Run readability checks and report their coverage."""
 
+from collections.abc import Sequence
 import dataclasses
 import logging
-import subprocess
-from collections.abc import Sequence
 from pathlib import Path
+import subprocess
 
 import click
 
-from readability.tools import (
-    ToolPlan,
-    _command_batches,
-    _get_tool_definitions,
-    _repository_root,
-    _should_run_tool,
-    _tool_is_installed,
-)
+from readability.tools import _command_batches
+from readability.tools import _get_tool_definitions
+from readability.tools import _repository_root
+from readability.tools import _should_run_tool
+from readability.tools import _tool_is_installed
+from readability.tools import ToolPlan
 
 logger = logging.getLogger("readability")
 DEFAULT_TIMEOUT = 60

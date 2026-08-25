@@ -1,8 +1,10 @@
 from importlib.resources import files
 
 import readability
-from readability.checking import CheckReport, check_paths
-from readability.cli import cli, main
+from readability.checking import check_paths
+from readability.checking import CheckReport
+from readability.cli import cli
+from readability.cli import main
 
 
 def test_public_modules_are_importable() -> None:
