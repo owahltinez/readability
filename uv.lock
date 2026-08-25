@@ -194,7 +194,7 @@ wheels = [
 
 [[package]]
 name = "readability-cli"
-version = "0.10.0"
+version = "0.10.1"
 source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },
