@@ -62,6 +62,7 @@ def check_paths(
     paths: Sequence[str | Path],
     project_root: Path | None = None,
     fix: bool = False,
+    unsafe: bool = False,
 ) -> CheckReport:
     """Run relevant checks for paths and aggregate what the tools did.
 
@@ -78,6 +79,8 @@ def check_paths(
             and ignore files. Defaults to the repository the process is in.
             It does not rebase paths.
         fix: Whether to apply automatic fixes.
+        unsafe: Whether those fixes may change behavior or drop comments.
+            Tools that draw no such distinction are unaffected.
 
     Returns:
         A report aggregated across all provided paths.
@@ -100,7 +103,7 @@ def check_paths(
 
     report = CheckReport()
     for path in requested_paths:
-        path_report = _check_path(path, root, boundary, fix=fix)
+        path_report = _check_path(path, root, boundary, fix=fix, unsafe=unsafe)
         if not path_report.ran:
             path_report.unverified_paths.append(path)
         report.absorb(path_report)
@@ -112,6 +115,7 @@ def _check_path(
     project_root: Path,
     boundary: Path | None = None,
     fix: bool = False,
+    unsafe: bool = False,
 ) -> CheckReport:
     """Apply relevant tools to a single path.
 
@@ -121,6 +125,7 @@ def _check_path(
         boundary: Outermost directory config discovery may consider, or
             None to bound it by the path's own repository.
         fix: Whether to apply automatic fixes.
+        unsafe: Whether those fixes may change behavior or drop comments.
 
     Returns:
         What the tools applicable to this path did.
@@ -141,7 +146,7 @@ def _check_path(
             report.skipped.add(tool.name)
             continue
 
-        report.absorb(_run_tool(tool, fix=fix))
+        report.absorb(_run_tool(tool, fix=fix, unsafe=unsafe))
 
     return report
 
@@ -149,12 +154,14 @@ def _check_path(
 def _run_tool(
     tool: ToolPlan,
     fix: bool = False,
+    unsafe: bool = False,
 ) -> CheckReport:
     """Orchestrate the execution of a specific formatting or linting tool.
 
     Args:
         tool: The executable plan to run.
         fix: Whether to apply automatic fixes.
+        unsafe: Whether those fixes may change behavior or drop comments.
 
     Returns:
         What the tool did: whether it reported findings, and whether it
@@ -168,9 +175,11 @@ def _run_tool(
     target_count = len(tool.targets or ())
     try:
         if fix:
+            # A tool with no unsafe mode still fixes what it safely can
+            unsafe_fix = tool.unsafe_fix if unsafe else ()
+            phases = (("format", tool.format), ("fix", unsafe_fix or tool.fix))
             # Leftovers exit non-zero, which is a finding rather than a failure
-            for phase in ("format", "fix"):
-                configured_command = getattr(tool, phase)
+            for phase, configured_command in phases:
                 if configured_command:
                     commands = _command_batches(
                         configured_command, target_count

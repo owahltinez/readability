@@ -167,8 +167,13 @@ def _echo_languages() -> None:
 @click.option(
     "--fix", is_flag=True, help="Automatically fix issues if possible."
 )
+@click.option(
+    "--unsafe",
+    is_flag=True,
+    help="Also apply fixes that may change behavior. Implies --fix.",
+)
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging.")
-def check(paths: Sequence[str], fix: bool, verbose: bool) -> None:
+def check(paths: Sequence[str], fix: bool, unsafe: bool, verbose: bool) -> None:
     """Run relevant formatters and linters for given paths.
 
     Exits with a non-zero status code if any tool reports findings, so the
@@ -177,7 +182,8 @@ def check(paths: Sequence[str], fix: bool, verbose: bool) -> None:
     if verbose:
         logger.setLevel(logging.DEBUG)
 
-    report = check_paths(paths, fix=fix)
+    # Unsafe fixes are still fixes, so asking for them is asking to fix
+    report = check_paths(paths, fix=fix or unsafe, unsafe=unsafe)
 
     # Coverage the caller does not know is missing reads as coverage
     if report.skipped:

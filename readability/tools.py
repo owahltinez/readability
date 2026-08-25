@@ -21,6 +21,7 @@ class ToolPlan:
     check: tuple[str, ...] = ()
     check_format: tuple[str, ...] = ()
     fix: tuple[str, ...] = ()
+    unsafe_fix: tuple[str, ...] = ()
     format: tuple[str, ...] = ()
     targets: tuple[str, ...] | None = None
     cwd: Path | None = None
@@ -300,10 +301,16 @@ def _plan(
             for exclude in excludes
             for argument in (str(flag), str(exclude))
         ]
+    # Every tool spells its own opt-in, so callers only ask for the intent
+    words_by_phase: dict[str, tuple[str, ...]] = dict(TOOL_PHASES[tool])
+    unsafe_flag = UNSAFE_FLAGS.get(tool)
+    if unsafe_flag and "fix" in words_by_phase:
+        words_by_phase["unsafe_fix"] = (*words_by_phase["fix"], unsafe_flag)
+
     # Named rather than unpacked, so the type checker still sees the fields
     phases = {
         phase: (*binary, *words, *config, *carved, *argv)
-        for phase, words in TOOL_PHASES[tool].items()
+        for phase, words in words_by_phase.items()
     }
     return ToolPlan(
         name=tool,
@@ -313,6 +320,7 @@ def _plan(
         check=phases.get("check", ()),
         check_format=phases.get("check_format", ()),
         fix=phases.get("fix", ()),
+        unsafe_fix=phases.get("unsafe_fix", ()),
         format=phases.get("format", ()),
     )
 
@@ -385,6 +393,9 @@ TOOL_PHASES = {
     },
     "gofmt": {"check_format": ("-l",), "format": ("-w",)},
 }
+
+# Per tool: how it names fixes that may change behavior or drop comments
+UNSAFE_FLAGS = {"ruff": "--unsafe-fixes", "biome": "--unsafe"}
 
 
 def _matching_paths(path: Path, extensions: Sequence[str]) -> list[str]:
