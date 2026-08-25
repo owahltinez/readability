@@ -76,7 +76,15 @@ readability check src/ tests/ main.py
 
 # Automatically fix and format files
 readability check . --fix
+
+# Also apply fixes that may change behavior (implies --fix)
+readability check . --unsafe
 ```
+
+Fixes that may change a program's behavior or drop its comments are opt-in
+through `--unsafe`, which every tool applies under its own name: Ruff's
+`--unsafe-fixes` and Biome's `--unsafe`. Tools drawing no such distinction,
+such as gofmt, are unaffected by it.
 
 ### Supported Formats
 

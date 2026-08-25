@@ -1080,8 +1080,16 @@ def test_check_paths_aggregates_str_and_path_inputs(
         failed={"biome"},
     )
     assert mock_check_path.call_args_list == [
-        call(Path("src/example.py"), project_root, project_root, fix=True),
-        call(Path("main.go"), project_root, project_root, fix=True),
+        call(
+            Path("src/example.py"),
+            project_root,
+            project_root,
+            fix=True,
+            unsafe=False,
+        ),
+        call(
+            Path("main.go"), project_root, project_root, fix=True, unsafe=False
+        ),
     ]
 
 
@@ -1128,7 +1136,7 @@ def test_check_paths_defaults_project_root_to_cwd(
     check_paths([Path("example.py")])
 
     mock_check_path.assert_called_once_with(
-        Path("example.py"), tmp_path, None, fix=False
+        Path("example.py"), tmp_path, None, fix=False, unsafe=False
     )
 
 
@@ -1197,7 +1205,9 @@ def test_check_command_delegates_to_public_api(
         Path("script.py").touch()
         result = runner.invoke(cli, ["check", "script.py"])
 
-    mock_check_paths.assert_called_once_with(("script.py",), fix=False)
+    mock_check_paths.assert_called_once_with(
+        ("script.py",), fix=False, unsafe=False
+    )
     assert result.exit_code == 0
     assert result.stdout == ""
     assert result.stderr == "No findings in 1 path(s) (ruff).\n"
@@ -2052,3 +2062,136 @@ def test_fix_still_reports_what_it_could_not_fix(
     commands = [call.args[0] for call in mock_run.call_args_list]
     assert any("--fix" not in c and "check" in c for c in commands)
     assert result.exit_code != 0
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_unsafe_translates_to_the_ruff_flag(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """--unsafe reaches ruff under the name ruff gives it.
+
+    Args:
+        mock_run: The mocked subprocess.run function.
+        mock_which: The mocked shutil.which function.
+        tmp_path: The temporary directory fixture.
+    """
+    mock_which.side_effect = lambda name: name if name == "ruff" else None
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("pyproject.toml").touch()
+        Path("script.py").touch()
+
+        result = runner.invoke(cli, ["check", "--fix", "--unsafe", "script.py"])
+
+    assert result.exit_code == 0
+    cfg = str(_bundled_config("ruff"))
+    called_cmds = [call.args[0] for call in mock_run.call_args_list]
+    assert [
+        "ruff",
+        "check",
+        "--fix",
+        "--force-exclude",
+        "--unsafe-fixes",
+        "--config",
+        cfg,
+        "script.py",
+    ] in called_cmds
+    # Formatters have no unsafe mode, so the flag must not reach them
+    assert [
+        "ruff",
+        "format",
+        "--force-exclude",
+        "--config",
+        cfg,
+        "script.py",
+    ] in called_cmds
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_unsafe_translates_to_the_biome_flag(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """Biome spells the same intent differently and gets its own spelling.
+
+    Args:
+        mock_run: The mocked subprocess.run function.
+        mock_which: The mocked shutil.which function.
+        tmp_path: The temporary directory fixture.
+    """
+    mock_which.side_effect = lambda name: name if name == "biome" else None
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("script.ts").touch()
+
+        result = runner.invoke(cli, ["check", "--fix", "--unsafe", "script.ts"])
+
+    assert result.exit_code == 0
+    called_cmds = [call.args[0] for call in mock_run.call_args_list]
+    lint = next(c for c in called_cmds if "lint" in c)
+    assert lint[:5] == [
+        "biome",
+        "lint",
+        "--write",
+        "--no-errors-on-unmatched",
+        "--unsafe",
+    ]
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_unsafe_implies_fix(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """Asking for unsafe fixes without --fix asks for nothing otherwise.
+
+    Args:
+        mock_run: The mocked subprocess.run function.
+        mock_which: The mocked shutil.which function.
+        tmp_path: The temporary directory fixture.
+    """
+    mock_which.side_effect = lambda name: name if name == "ruff" else None
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("pyproject.toml").touch()
+        Path("script.py").touch()
+
+        result = runner.invoke(cli, ["check", "--unsafe", "script.py"])
+
+    assert result.exit_code == 0
+    called_cmds = [call.args[0] for call in mock_run.call_args_list]
+    assert any("--unsafe-fixes" in command for command in called_cmds)
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_unsafe_is_a_no_op_for_tools_without_one(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """A tool with no unsafe mode still fixes rather than being skipped.
+
+    Args:
+        mock_run: The mocked subprocess.run function.
+        mock_which: The mocked shutil.which function.
+        tmp_path: The temporary directory fixture.
+    """
+    mock_which.side_effect = lambda name: name if name == "gofmt" else None
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("main.go").touch()
+
+        result = runner.invoke(cli, ["check", "--fix", "--unsafe", "main.go"])
+
+    assert result.exit_code == 0
+    assert [invocation.args[0] for invocation in mock_run.call_args_list] == [
+        ["gofmt", "-w", "main.go"]
+    ]
