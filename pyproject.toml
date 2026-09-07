@@ -5,8 +5,13 @@ description = "A CLI to lint, format, and type-check code with Google-style defa
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "beautifulsoup4>=4.14.3",
     "click>=8.3.1",
+]
+
+# Only `sync` fetches and converts guides; the rest reads bundled copies.
+[project.optional-dependencies]
+sync = [
+    "beautifulsoup4>=4.14.3",
     "markdownify>=1.2.2",
     "requests>=2.33.0",
 ]
@@ -34,6 +39,8 @@ testpaths = ["."]
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
+    # The suite and the weekly guide refresh both exercise `sync`.
+    "readability-cli[sync]",
     "ruff>=0.15.8",
 ]
 

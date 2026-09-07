@@ -358,9 +358,13 @@ Supported languages and their aliases:
   - vim [cached]
 ```
 
-Refresh the cache with `sync`, which takes languages or refetches everything:
+Refresh the cache with `sync`, which takes languages or refetches everything.
+It fetches and converts HTML, so it needs the `sync` extra; the bundled guides
+are already converted, and every other command reads those:
 
 ```bash
+pip install 'readability-cli[sync]'
+
 # Refetch one guide, or a few
 readability sync python shell
 
@@ -375,8 +379,8 @@ The tool stores local copies of the style guides in the
 the `guide` command uses these local files when they exist. The bundled copies
 are automatically synchronized weekly from the official
 [Google Style Guides](https://google.github.io/styleguide/) repository via
-GitHub Actions, and you can refresh your local cache at any time with the `sync`
-command.
+GitHub Actions, so upgrading the package is usually enough. To refresh a local
+cache yourself, install the `sync` extra and run the `sync` command.
 
 You can override the default guide directory by setting the
 `READABILITY_CACHE` environment variable. This is useful if you want to store

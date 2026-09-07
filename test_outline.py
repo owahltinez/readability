@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
+import click
 from click.testing import CliRunner
 
 from readability.cli import cli
@@ -785,6 +786,21 @@ def test_sync_deduplicates_aliases(
 
     assert result.exit_code == 0
     assert mock_get_content.call_count == 1
+
+
+@patch("readability.guide.get_guide_content")
+def test_sync_reports_a_failed_fetch_in_its_exit_code(
+    mock_get_content: MagicMock, tmp_path: Path
+) -> None:
+    """A stale local copy left behind is a failure, not a quiet success."""
+    mock_get_content.side_effect = click.ClickException("network is down")
+
+    with patch("readability.guide.get_guides_dir", return_value=str(tmp_path)):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["sync", "python"])
+
+    assert result.exit_code != 0
+    assert "Failures: 1" in result.stderr
 
 
 def test_sync_rejects_an_unsupported_language(tmp_path: Path) -> None:

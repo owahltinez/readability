@@ -12,6 +12,7 @@ from readability.guide import get_guide
 from readability.guide import get_guides_dir
 from readability.guide import get_local_path
 from readability.guide import LANGUAGE_MAP
+from readability.guide import load_sync_deps
 from readability.guide import refresh_guide
 from readability.outline import _echo_outline
 from readability.outline import _select_section
@@ -123,6 +124,9 @@ def sync(languages: Sequence[str], verbose: bool) -> None:
     if verbose:
         logger.setLevel(logging.DEBUG)
 
+    # A precondition, not a per-guide failure the loop should report N times
+    load_sync_deps()
+
     filenames = _resolve_filenames(languages)
     click.echo(f"Synchronizing {len(filenames)} style guide(s)...", err=True)
 
@@ -146,6 +150,10 @@ def sync(languages: Sequence[str], verbose: bool) -> None:
         f"Sync complete. Successes: {success_count}, Failures: {failure_count}",
         err=True,
     )
+
+    # A guide that did not refetch leaves a stale local copy behind
+    if failure_count:
+        sys.exit(1)
 
 
 def _echo_languages() -> None:
@@ -240,7 +248,6 @@ def check(paths: Sequence[str], fix: bool, unsafe: bool, verbose: bool) -> None:
     )
 
 
-# Main entry point for the CLI
 def main() -> None:
     """Main entry point for the CLI."""
     # Configured here, not at import, so library use has no side effects
