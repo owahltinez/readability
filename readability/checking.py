@@ -204,9 +204,10 @@ def _run_tool(
                 result = _capture_tool_command(command, cwd=tool.cwd)
                 if _tool_checked_files(tool.name, result):
                     report.ran.add(tool.name)
-                # gofmt reports by naming files rather than by exit code
+                # gofmt and goimports name files rather than using exit codes
                 if result.returncode != 0 or (
-                    tool.name == "gofmt" and result.stdout.strip()
+                    tool.name in ("gofmt", "goimports")
+                    and result.stdout.strip()
                 ):
                     report.findings = True
                     click.echo(
