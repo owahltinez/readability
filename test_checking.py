@@ -1045,6 +1045,17 @@ def test_bundled_default_configs_are_valid() -> None:
     }
 
 
+def test_bundled_ruff_config_includes_enriched_rules() -> None:
+    """The default ruff config selects best-practice and modernization rules."""
+    # Enriched rules for bug prevention, modern syntax, and simplification
+    ruff_config = tomllib.loads(_bundled_config("ruff").read_text())
+    selected_rules = set(ruff_config["lint"]["select"])
+    expected_rules = {"B", "UP", "SIM", "C4", "RUF"}
+
+    # All enriched rule sets must be present
+    assert expected_rules.issubset(selected_rules)
+
+
 @patch("readability.checking._check_path")
 def test_check_paths_aggregates_str_and_path_inputs(
     mock_check_path: MagicMock,

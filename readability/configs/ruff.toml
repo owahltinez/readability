@@ -6,8 +6,9 @@ line-length = 80
 
 [lint]
 # Pycodestyle (E, W), Pyflakes (F), import order (I), naming (N),
-# docstrings (D), and pylint (PL) rules
-select = ["E", "W", "F", "I", "N", "D", "PL"]
+# docstrings (D), pylint (PL), bugbear (B), pyupgrade (UP),
+# simplify (SIM), comprehensions (C4), and ruff-specific (RUF) rules
+select = ["E", "W", "F", "I", "N", "D", "PL", "B", "UP", "SIM", "C4", "RUF"]
 # Complexity counters and magic-value warnings are guidance, not errors
 ignore = ["PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLR2004"]
 

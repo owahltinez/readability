@@ -82,7 +82,7 @@ def get_guide_content(url: str) -> str:
         logger.error("Failed to fetch content from %s: %s", url, e)
         raise click.ClickException(
             f"Failed to fetch style guide from {url}: {e}"
-        )
+        ) from e
 
     return response.text
 
@@ -242,7 +242,7 @@ def get_guide(language: str, remote: bool = False) -> str:
     # If remote is False, check for local file first
     if not remote and os.path.exists(local_path):
         logger.info("Reading style guide from local file: %s", local_path)
-        with open(local_path, "r", encoding="utf-8") as f:
+        with open(local_path, encoding="utf-8") as f:
             return f.read()
 
     return refresh_guide(filename)
