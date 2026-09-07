@@ -1,19 +1,45 @@
 """Fetch and cache Google style guides."""
 
+import functools
 from importlib.resources import files
 import logging
 import os
+import types
 import warnings
 
-from bs4 import BeautifulSoup
-from bs4 import XMLParsedAsHTMLWarning
 import click
-from markdownify import markdownify as md
-import requests
-
-warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
 logger = logging.getLogger("readability")
+
+
+@functools.cache
+def load_sync_deps() -> tuple[
+    types.ModuleType, types.ModuleType, types.ModuleType
+]:
+    """Imports the libraries only the guide refresh needs.
+
+    Guides ship pre-converted, so `check` and `guide` never touch the
+    network or parse HTML. Importing here keeps that stack out of the
+    default install instead of charging every user for `sync`.
+
+    Returns:
+        The requests, bs4, and markdownify modules.
+
+    Raises:
+        click.ClickException: If the sync extra is not installed.
+    """
+    try:
+        import bs4  # noqa: PLC0415
+        import markdownify  # noqa: PLC0415
+        import requests  # noqa: PLC0415
+    except ImportError as e:
+        raise click.ClickException(
+            "Refreshing style guides needs extra libraries. Install them "
+            "with: pip install 'readability-cli[sync]'"
+        ) from e
+
+    warnings.filterwarnings("ignore", category=bs4.XMLParsedAsHTMLWarning)
+    return requests, bs4, markdownify
 
 
 def get_guides_dir() -> str:
@@ -72,6 +98,7 @@ def get_guide_content(url: str) -> str:
     Raises:
         click.ClickException: If the HTTP request fails.
     """
+    requests, _, _ = load_sync_deps()
     logger.info("Fetching style guide from %s", url)
 
     # Perform the HTTP GET request with a timeout
@@ -97,6 +124,7 @@ def convert_to_markdown(content: str, filename: str) -> str:
     Returns:
         The converted markdown content.
     """
+    _, bs4, markdownify = load_sync_deps()
     logger.debug("Converting content for %s", filename)
 
     # Handle Markdown files directly
@@ -109,7 +137,7 @@ def convert_to_markdown(content: str, filename: str) -> str:
 
     # Handle XML files (used for Vim script guide and JSON style guide)
     if filename.endswith(".xml"):
-        soup = BeautifulSoup(content, "html.parser")
+        soup = bs4.BeautifulSoup(content, "html.parser")
 
         # Add titles as headers
         guide = soup.find("guide")
@@ -140,7 +168,7 @@ def convert_to_markdown(content: str, filename: str) -> str:
             content_str = summary.decode_contents()
             summary.clear()
             strong = soup.new_tag("strong")
-            strong.append(BeautifulSoup(content_str, "html.parser"))
+            strong.append(bs4.BeautifulSoup(content_str, "html.parser"))
             summary.append(strong)
 
         for snippet in soup.find_all(["code_snippet", "bad_code_snippet"]):
@@ -158,11 +186,11 @@ def convert_to_markdown(content: str, filename: str) -> str:
             snippet.append(code)
 
         # Convert the modified soup to string and then to markdown
-        return md(str(soup), **MARKDOWNIFY_OPTIONS)
+        return markdownify.markdownify(str(soup), **MARKDOWNIFY_OPTIONS)
 
     # Handle HTML files by converting them to Markdown
     if filename.endswith(".html"):
-        return md(content, **MARKDOWNIFY_OPTIONS)
+        return markdownify.markdownify(content, **MARKDOWNIFY_OPTIONS)
 
     # Fallback to returning raw content
     return content

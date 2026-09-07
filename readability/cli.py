@@ -12,6 +12,7 @@ from readability.guide import get_guide
 from readability.guide import get_guides_dir
 from readability.guide import get_local_path
 from readability.guide import LANGUAGE_MAP
+from readability.guide import load_sync_deps
 from readability.guide import refresh_guide
 from readability.outline import _echo_outline
 from readability.outline import _select_section
@@ -122,6 +123,10 @@ def sync(languages: Sequence[str], verbose: bool) -> None:
     """
     if verbose:
         logger.setLevel(logging.DEBUG)
+
+    # A missing extra is a precondition, not a per-guide failure: the loop
+    # below would otherwise report the same error once per guide and exit 0.
+    load_sync_deps()
 
     filenames = _resolve_filenames(languages)
     click.echo(f"Synchronizing {len(filenames)} style guide(s)...", err=True)
