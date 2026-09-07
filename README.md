@@ -9,8 +9,8 @@ quick access to style conventions without browsing HTML pages.
 ## Features
 
 - **Linting & Formatting**: A `check` command that automatically detects and
-  runs relevant tools (Ruff, Pyrefly, Biome, gofmt, and goimports) for your
-  project.
+  runs relevant tools (Ruff, Pyrefly, Biome, gofmt, goimports, shfmt,
+  shellcheck, and rustfmt) for your project.
 - **Predictable Ownership**: Every supported format has fixed tools, so
   configuration customizes checks without changing which formatter runs.
 - **Style Guides**: A `guide` command that fetches the latest Google style
@@ -94,6 +94,8 @@ such as gofmt and goimports, are unaffected by it.
 | `.py`                                                            | Ruff lint/format; Pyrefly type checking | Ruff and Pyrefly native configuration |
 | `.js`, `.jsx`, `.ts`, `.tsx`, `.json`, `.jsonc`, `.css`, `.html` | Biome                                   | `biome.json` or `biome.jsonc`         |
 | `.go`                                                            | gofmt, goimports                        | None                                  |
+| `.sh`, `.bash`                                                   | shfmt format; shellcheck lint           | None                                  |
+| `.rs`                                                            | rustfmt                                 | None                                  |
 
 Markdown, YAML, SCSS, JSONL, and extensions not listed above are unsupported.
 An unsupported-only path reports that nothing was checked and exits

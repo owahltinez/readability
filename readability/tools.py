@@ -348,6 +348,9 @@ TOOL_EXTENSIONS = {
     ),
     "gofmt": (".go",),
     "goimports": (".go",),
+    "shfmt": (".sh", ".bash"),
+    "shellcheck": (".sh", ".bash"),
+    "rustfmt": (".rs",),
 }
 
 # Headroom below common argv limits; long target lists are split before exec
@@ -406,6 +409,12 @@ TOOL_PHASES = {
     },
     "gofmt": {"check_format": ("-l",), "format": ("-w",)},
     "goimports": {"check_format": ("-l",), "format": ("-w",)},
+    "shfmt": {
+        "check_format": ("-i", "2", "-ci", "-d"),
+        "format": ("-i", "2", "-ci", "-w"),
+    },
+    "shellcheck": {"check": ()},
+    "rustfmt": {"check_format": ("--check",), "format": ()},
 }
 
 # Per tool: how it names fixes that may change behavior or drop comments
@@ -569,6 +578,33 @@ def _get_tool_definitions(
             ("goimports",),
             [],
             _matching_paths(path, TOOL_EXTENSIONS["goimports"]),
+            path,
+        )
+    )
+    plans.append(
+        _plan(
+            "shfmt",
+            ("shfmt",),
+            [],
+            _matching_paths(path, TOOL_EXTENSIONS["shfmt"]),
+            path,
+        )
+    )
+    plans.append(
+        _plan(
+            "shellcheck",
+            ("shellcheck",),
+            [],
+            _matching_paths(path, TOOL_EXTENSIONS["shellcheck"]),
+            path,
+        )
+    )
+    plans.append(
+        _plan(
+            "rustfmt",
+            ("rustfmt",),
+            [],
+            _matching_paths(path, TOOL_EXTENSIONS["rustfmt"]),
             path,
         )
     )
