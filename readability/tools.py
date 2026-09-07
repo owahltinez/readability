@@ -347,6 +347,7 @@ TOOL_EXTENSIONS = {
         ".html",
     ),
     "gofmt": (".go",),
+    "goimports": (".go",),
 }
 
 # Headroom below common argv limits; long target lists are split before exec
@@ -392,6 +393,7 @@ TOOL_PHASES = {
         "format": ("format", "--write", "--no-errors-on-unmatched"),
     },
     "gofmt": {"check_format": ("-l",), "format": ("-w",)},
+    "goimports": {"check_format": ("-l",), "format": ("-w",)},
 }
 
 # Per tool: how it names fixes that may change behavior or drop comments
@@ -546,6 +548,15 @@ def _get_tool_definitions(
             ("gofmt",),
             [],
             _matching_paths(path, TOOL_EXTENSIONS["gofmt"]),
+            path,
+        )
+    )
+    plans.append(
+        _plan(
+            "goimports",
+            ("goimports",),
+            [],
+            _matching_paths(path, TOOL_EXTENSIONS["goimports"]),
             path,
         )
     )

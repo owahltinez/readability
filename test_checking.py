@@ -15,6 +15,8 @@ from readability.cli import cli
 from readability.tools import _bundled_config
 from readability.tools import _get_tool_definitions
 from readability.tools import _has_project_config
+from readability.tools import TOOL_EXTENSIONS
+from readability.tools import TOOL_PHASES
 from readability.tools import TOOL_RUNNERS
 
 
@@ -1608,6 +1610,170 @@ def test_gofmt_fix_failure_is_reported(
     assert "gofmt formatting findings" in result.output
 
 
+def test_goimports_tool_plan_generation(tmp_path: Path) -> None:
+    """Go files produce goimports plans alongside gofmt."""
+    go_file = tmp_path / "main.go"
+    go_file.touch()
+
+    # Verify tool registration in extensions and phases
+    assert TOOL_EXTENSIONS["goimports"] == (".go",)
+    assert TOOL_PHASES["goimports"] == {
+        "check_format": ("-l",),
+        "format": ("-w",),
+    }
+
+    # Verify tool plan creation
+    plans = {
+        plan.name: plan for plan in _get_tool_definitions(go_file, tmp_path)
+    }
+    assert "goimports" in plans
+    goimports = plans["goimports"]
+    assert goimports.extensions == (".go",)
+    assert goimports.check_format == ("goimports", "-l", str(go_file))
+    assert goimports.format == ("goimports", "-w", str(go_file))
+    assert goimports.check == ()
+    assert goimports.fix == ()
+    assert goimports.targets == (str(go_file),)
+
+
+@pytest.mark.parametrize("fix", (False, True))
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_configless_go_uses_goimports_for_check_and_fix(
+    mock_run: MagicMock,
+    mock_which: MagicMock,
+    tmp_path: Path,
+    fix: bool,
+) -> None:
+    """Standalone Go files use symmetric goimports commands without go.mod."""
+    mock_which.side_effect = lambda name: name if name == "goimports" else None
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    # Run check or format on Go file
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("main.go").touch()
+        arguments = ["check", "main.go"]
+        if fix:
+            arguments.append("--fix")
+
+        result = runner.invoke(cli, arguments)
+
+    # Verify goimports command invoked with correct flags
+    assert result.exit_code == 0
+    expected = ["goimports", "-w" if fix else "-l", "main.go"]
+    assert [invocation.args[0] for invocation in mock_run.call_args_list] == [
+        expected
+    ]
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_goimports_scopes_a_directory_to_go_files(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """Goimports receives recursive Go files instead of an invalid directory."""
+    mock_which.side_effect = lambda name: name if name == "goimports" else None
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    # Populate directory structure with mixed files
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("src/nested").mkdir(parents=True)
+        Path("src/main.go").touch()
+        Path("src/nested/helper.go").touch()
+        Path("src/notes.txt").touch()
+
+        result = runner.invoke(cli, ["check", "src"])
+
+    # Verify only Go files are passed to goimports
+    assert result.exit_code == 0
+    assert [invocation.args[0] for invocation in mock_run.call_args_list] == [
+        ["goimports", "-l", "src/main.go", "src/nested/helper.go"]
+    ]
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_goimports_check_reports_diff_in_stdout_as_findings(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """Goimports reports diffs on stdout while exiting zero."""
+    mock_which.side_effect = lambda name: name if name == "goimports" else None
+    mock_run.return_value = MagicMock(
+        returncode=0, stdout="main.go\n", stderr=""
+    )
+
+    # Invoke check on unformatted Go file
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("main.go").touch()
+
+        result = runner.invoke(cli, ["check", "main.go"])
+
+    # Findings in stdout must fail the check
+    assert result.exit_code == 1
+    assert "--- goimports formatting findings ---" in result.output
+    assert "main.go" in result.output
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_goimports_fix_failure_is_reported(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """A failed goimports write cannot be reported as a clean fix."""
+    mock_which.side_effect = lambda name: name if name == "goimports" else None
+    mock_run.return_value = MagicMock(
+        returncode=1, stdout="", stderr="invalid Go syntax"
+    )
+
+    # Invoke check --fix on invalid Go file
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("main.go").touch()
+
+        result = runner.invoke(cli, ["check", "main.go", "--fix"])
+
+    # Fix error must fail the check
+    assert result.exit_code == 1
+    assert "goimports formatting findings" in result.output
+
+
+@pytest.mark.parametrize("fix", (False, True))
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_go_runs_both_gofmt_and_goimports(
+    mock_run: MagicMock,
+    mock_which: MagicMock,
+    tmp_path: Path,
+    fix: bool,
+) -> None:
+    """When both gofmt and goimports are installed, both run on Go files."""
+    mock_which.side_effect = lambda name: (
+        name if name in ("gofmt", "goimports") else None
+    )
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    # Run check or fix with both Go tools available
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("main.go").touch()
+        arguments = ["check", "main.go"]
+        if fix:
+            arguments.append("--fix")
+
+        result = runner.invoke(cli, arguments)
+
+    # Verify both tools ran with the appropriate flag
+    assert result.exit_code == 0
+    flag = "-w" if fix else "-l"
+    assert [invocation.args[0] for invocation in mock_run.call_args_list] == [
+        ["gofmt", flag, "main.go"],
+        ["goimports", flag, "main.go"],
+    ]
+
+
 @patch("shutil.which")
 @patch("subprocess.run")
 def test_large_biome_directory_uses_bounded_commands(
@@ -1653,6 +1819,7 @@ def test_missing_gofmt_is_reported_for_configless_go(
 
     assert result.exit_code == 1
     assert "gofmt" in result.stderr
+    assert "goimports" in result.stderr
     assert "nothing was verified" in result.stderr
 
 

@@ -9,7 +9,8 @@ quick access to style conventions without browsing HTML pages.
 ## Features
 
 - **Linting & Formatting**: A `check` command that automatically detects and
-  runs relevant tools (Ruff, Pyrefly, Biome, and gofmt) for your project.
+  runs relevant tools (Ruff, Pyrefly, Biome, gofmt, and goimports) for your
+  project.
 - **Predictable Ownership**: Every supported format has fixed tools, so
   configuration customizes checks without changing which formatter runs.
 - **Style Guides**: A `guide` command that fetches the latest Google style
@@ -84,7 +85,7 @@ readability check . --unsafe
 Fixes that may change a program's behavior or drop its comments are opt-in
 through `--unsafe`, which every tool applies under its own name: Ruff's
 `--unsafe-fixes` and Biome's `--unsafe`. Tools drawing no such distinction,
-such as gofmt, are unaffected by it.
+such as gofmt and goimports, are unaffected by it.
 
 ### Supported Formats
 
@@ -92,7 +93,7 @@ such as gofmt, are unaffected by it.
 | ---------------------------------------------------------------- | --------------------------------------- | ------------------------------------- |
 | `.py`                                                            | Ruff lint/format; Pyrefly type checking | Ruff and Pyrefly native configuration |
 | `.js`, `.jsx`, `.ts`, `.tsx`, `.json`, `.jsonc`, `.css`, `.html` | Biome                                   | `biome.json` or `biome.jsonc`         |
-| `.go`                                                            | gofmt                                   | None                                  |
+| `.go`                                                            | gofmt, goimports                        | None                                  |
 
 Markdown, YAML, SCSS, JSONL, and extensions not listed above are unsupported.
 An unsupported-only path reports that nothing was checked and exits
@@ -100,8 +101,8 @@ successfully.
 
 Biome first checks a project's `node_modules/.bin`. Ruff, Pyrefly, and Biome
 then use `PATH`, followed by `uvx` for the Python tools or `npx` for Biome. The
-runners cache downloads, so subsequent runs work offline. Gofmt ships with Go
-and must be available on `PATH`.
+runners cache downloads, so subsequent runs work offline. Gofmt and goimports
+must be available on `PATH`.
 
 That keeps this package at ~4 MB rather than the ~54 MB it would take to carry
 Ruff and Pyrefly itself — a cost that would fall on everyone using only `guide`.
@@ -119,8 +120,8 @@ Set `UV_OFFLINE=1` to forbid fetching. A tool that then cannot be reached fails
 the run rather than passing it.
 
 Ruff, Pyrefly, and Biome ship with bundled configurations, so they run on every
-file they own without project setup. Gofmt runs on `.go` files even when there
-is no `go.mod`.
+file they own without project setup. Gofmt and goimports run on `.go` files even
+when there is no `go.mod`.
 
 A tool that could not be reached at all is never skipped quietly:
 
@@ -185,9 +186,9 @@ For Python, add `[tool.ruff]` or `[tool.pyrefly]` to `pyproject.toml`, or use
 `ruff.toml`, `.ruff.toml`, or `pyrefly.toml`. Ruff, Pyrefly, and Biome load
 their native project configurations in place of bundled defaults. Readability
 does not interpret EditorConfig itself; a canonical tool such as Biome may opt
-into it through that tool's native configuration. Gofmt has no project settings.
-The bundled Biome file requires Biome 2.5 or later, matching the fallback
-runner's version floor.
+into it through that tool's native configuration. Neither gofmt nor goimports
+has project settings. The bundled Biome file requires Biome 2.5 or later,
+matching the fallback runner's version floor.
 
 Configuration is found per file, in the file's own directory and then its
 ancestors, which is where each canonical tool looks. A package keeping its
