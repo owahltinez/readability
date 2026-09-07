@@ -124,8 +124,7 @@ def sync(languages: Sequence[str], verbose: bool) -> None:
     if verbose:
         logger.setLevel(logging.DEBUG)
 
-    # A missing extra is a precondition, not a per-guide failure: the loop
-    # below would otherwise report the same error once per guide and exit 0.
+    # A precondition, not a per-guide failure the loop should report N times
     load_sync_deps()
 
     filenames = _resolve_filenames(languages)
@@ -151,6 +150,10 @@ def sync(languages: Sequence[str], verbose: bool) -> None:
         f"Sync complete. Successes: {success_count}, Failures: {failure_count}",
         err=True,
     )
+
+    # A guide that did not refetch leaves a stale local copy behind
+    if failure_count:
+        sys.exit(1)
 
 
 def _echo_languages() -> None:
@@ -245,7 +248,6 @@ def check(paths: Sequence[str], fix: bool, unsafe: bool, verbose: bool) -> None:
     )
 
 
-# Main entry point for the CLI
 def main() -> None:
     """Main entry point for the CLI."""
     # Configured here, not at import, so library use has no side effects

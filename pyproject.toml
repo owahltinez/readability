@@ -8,8 +8,7 @@ dependencies = [
     "click>=8.3.1",
 ]
 
-# Only `sync` refetches guides from the web; the converted copies ship with
-# the package, so the HTML and network stack is opt-in.
+# Only `sync` fetches and converts guides; the rest reads bundled copies.
 [project.optional-dependencies]
 sync = [
     "beautifulsoup4>=4.14.3",

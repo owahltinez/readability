@@ -18,9 +18,8 @@ def load_sync_deps() -> tuple[
 ]:
     """Imports the libraries only the guide refresh needs.
 
-    Guides ship pre-converted, so `check` and `guide` never touch the
-    network or parse HTML. Importing here keeps that stack out of the
-    default install instead of charging every user for `sync`.
+    Guides ship pre-converted, so this stack stays out of the default
+    install rather than charging every user for `sync`.
 
     Returns:
         The requests, bs4, and markdownify modules.
@@ -55,7 +54,6 @@ def get_guides_dir() -> str:
     return os.getenv("READABILITY_CACHE") or str(bundled_guides)
 
 
-# Mapping of languages to their Google Style Guide file paths
 LANGUAGE_MAP = {
     "python": "pyguide.md",
     "shell": "shellguide.md",
@@ -101,7 +99,6 @@ def get_guide_content(url: str) -> str:
     requests, _, _ = load_sync_deps()
     logger.info("Fetching style guide from %s", url)
 
-    # Perform the HTTP GET request with a timeout
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
@@ -127,7 +124,6 @@ def convert_to_markdown(content: str, filename: str) -> str:
     _, bs4, markdownify = load_sync_deps()
     logger.debug("Converting content for %s", filename)
 
-    # Handle Markdown files directly
     if filename.endswith(".md"):
         return content
 
@@ -135,11 +131,10 @@ def convert_to_markdown(content: str, filename: str) -> str:
     if content.lstrip().startswith("<?xml"):
         content = content.split("?>", 1)[-1].lstrip()
 
-    # Handle XML files (used for Vim script guide and JSON style guide)
+    # The Vim script and JSON guides are only published as XML
     if filename.endswith(".xml"):
         soup = bs4.BeautifulSoup(content, "html.parser")
 
-        # Add titles as headers
         guide = soup.find("guide")
         if guide:
             title = guide.get("title")
@@ -164,7 +159,6 @@ def convert_to_markdown(content: str, filename: str) -> str:
 
         for summary in soup.find_all("summary"):
             summary.name = "p"
-            # Wrap content in strong tags
             content_str = summary.decode_contents()
             summary.clear()
             strong = soup.new_tag("strong")
@@ -185,14 +179,11 @@ def convert_to_markdown(content: str, filename: str) -> str:
                 snippet.append(p)
             snippet.append(code)
 
-        # Convert the modified soup to string and then to markdown
         return markdownify.markdownify(str(soup), **MARKDOWNIFY_OPTIONS)
 
-    # Handle HTML files by converting them to Markdown
     if filename.endswith(".html"):
         return markdownify.markdownify(content, **MARKDOWNIFY_OPTIONS)
 
-    # Fallback to returning raw content
     return content
 
 
@@ -209,9 +200,7 @@ def get_local_path(filename: str) -> str:
     Returns:
         The full local path to the cached markdown file.
     """
-    # Flatten the filename by replacing '/' with '-'
     flattened = filename.replace("/", "-")
-    # Use the flattened filename and change extension to .md for uniform storage
     base_name = flattened.rsplit(".", 1)[0]
     return os.path.join(get_guides_dir(), f"{base_name}.md")
 
@@ -255,7 +244,6 @@ def get_guide(language: str, remote: bool = False) -> str:
     Raises:
         click.UsageError: If the language is not supported.
     """
-    # Look up the filename in the mapping
     filename = LANGUAGE_MAP.get(language.lower())
     if not filename:
         error_msg = f"Language '{language}' is not supported."
@@ -267,7 +255,6 @@ def get_guide(language: str, remote: bool = False) -> str:
 
     local_path = get_local_path(filename)
 
-    # If remote is False, check for local file first
     if not remote and os.path.exists(local_path):
         logger.info("Reading style guide from local file: %s", local_path)
         with open(local_path, "r", encoding="utf-8") as f:
