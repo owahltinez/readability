@@ -523,7 +523,7 @@ def _shipped_guides() -> list[tuple[str, str]]:
         if filename in seen or not os.path.exists(path):
             continue
         seen.add(filename)
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             guides.append((language, f.read()))
     return guides
 

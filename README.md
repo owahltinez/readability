@@ -176,8 +176,9 @@ caller happened to be standing in.
 Ruff and Pyrefly defaults follow the
 [Google Python style guide](https://google.github.io/styleguide/pyguide.html):
 80-column lines, Google docstrings, one import per line sorted as isort's
-`google` profile does, and full type checking. The Biome default applies the
-80-column lines and two-space indentation of the
+`google` profile does, best-practice lint rules (bugbear, pyupgrade, simplify,
+comprehensions, and Ruff-specific rules), and full type checking. The Biome
+default applies the 80-column lines and two-space indentation of the
 [Google JavaScript style guide](https://google.github.io/styleguide/jsguide.html)
 and enables Biome's recommended lint rules. Project `biome.json` and
 `biome.jsonc` files replace those bundled defaults for Biome-owned formats.

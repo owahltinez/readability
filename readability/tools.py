@@ -355,8 +355,20 @@ MAX_COMMAND_BYTES = 16 * 1024
 
 # Named files bypass a tool's own exclusions, and Pyrefly ignores its excludes
 PRUNED_DIRECTORIES = frozenset(
-    ".git .hg .svn .venv venv .tox .nox node_modules "
-    "__pycache__ .mypy_cache .pytest_cache .ruff_cache".split()
+    [
+        ".git",
+        ".hg",
+        ".svn",
+        ".venv",
+        "venv",
+        ".tox",
+        ".nox",
+        "node_modules",
+        "__pycache__",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+    ]
 )
 
 # Per tool: config filenames, pyproject section (None if it has none), flag
