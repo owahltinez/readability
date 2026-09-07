@@ -2373,3 +2373,321 @@ def test_unsafe_is_a_no_op_for_tools_without_one(
     assert [invocation.args[0] for invocation in mock_run.call_args_list] == [
         ["gofmt", "-w", "main.go"]
     ]
+
+
+@pytest.mark.parametrize("extension", (".sh", ".bash"))
+def test_tool_definitions_for_shell(extension: str, tmp_path: Path) -> None:
+    """Shell files yield shfmt and shellcheck plans with style arguments."""
+    # Create the target shell file
+    script = tmp_path / f"script{extension}"
+    script.touch()
+
+    # Resolve tool plans for the file
+    tools = {
+        tool.name: tool for tool in _get_tool_definitions(script, tmp_path)
+    }
+
+    # Verify shfmt plan
+    shfmt = tools["shfmt"]
+    assert shfmt.extensions == (".sh", ".bash")
+    assert shfmt.check_format == ("shfmt", "-i", "2", "-ci", "-d", str(script))
+    assert shfmt.format == ("shfmt", "-i", "2", "-ci", "-w", str(script))
+    assert shfmt.check == ()
+    assert shfmt.fix == ()
+
+    # Verify shellcheck plan
+    shellcheck = tools["shellcheck"]
+    assert shellcheck.extensions == (".sh", ".bash")
+    assert shellcheck.check == ("shellcheck", str(script))
+    assert shellcheck.check_format == ()
+    assert shellcheck.format == ()
+    assert shellcheck.fix == ()
+
+
+def test_tool_definitions_for_rust(tmp_path: Path) -> None:
+    """Rust files yield rustfmt plans with check and in-place formatting."""
+    # Create the target Rust file
+    source = tmp_path / "main.rs"
+    source.touch()
+
+    # Resolve tool plans for the file
+    tools = {
+        tool.name: tool for tool in _get_tool_definitions(source, tmp_path)
+    }
+
+    # Verify rustfmt plan
+    rustfmt = tools["rustfmt"]
+    assert rustfmt.extensions == (".rs",)
+    assert rustfmt.check_format == ("rustfmt", "--check", str(source))
+    assert rustfmt.format == ("rustfmt", str(source))
+    assert rustfmt.check == ()
+    assert rustfmt.fix == ()
+
+
+@pytest.mark.parametrize("extension", (".sh", ".bash"))
+@pytest.mark.parametrize("fix", (False, True))
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_shell_uses_shfmt_and_shellcheck_for_check_and_fix(
+    mock_run: MagicMock,
+    mock_which: MagicMock,
+    tmp_path: Path,
+    extension: str,
+    fix: bool,
+) -> None:
+    """Shell files invoke shfmt and shellcheck during check and fix."""
+    # Allow shfmt and shellcheck to appear installed
+    mock_which.side_effect = lambda name: (
+        name if name in ("shfmt", "shellcheck") else None
+    )
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    # Run check command in an isolated environment
+    runner = CliRunner()
+    filename = f"script{extension}"
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path(filename).touch()
+        arguments = ["check", filename]
+        if fix:
+            arguments.append("--fix")
+        result = runner.invoke(cli, arguments)
+
+    # Verify clean exit and expected tool invocations
+    assert result.exit_code == 0
+    shfmt_action = "-w" if fix else "-d"
+    expected = [
+        ["shfmt", "-i", "2", "-ci", shfmt_action, filename],
+        ["shellcheck", filename],
+    ]
+    assert [
+        invocation.args[0] for invocation in mock_run.call_args_list
+    ] == expected
+
+
+@pytest.mark.parametrize("fix", (False, True))
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_rust_uses_rustfmt_for_check_and_fix(
+    mock_run: MagicMock,
+    mock_which: MagicMock,
+    tmp_path: Path,
+    fix: bool,
+) -> None:
+    """Rust files invoke rustfmt with check flag or in-place format."""
+    # Allow rustfmt to appear installed
+    mock_which.side_effect = lambda name: name if name == "rustfmt" else None
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    # Run check command in an isolated environment
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("main.rs").touch()
+        arguments = ["check", "main.rs"]
+        if fix:
+            arguments.append("--fix")
+        result = runner.invoke(cli, arguments)
+
+    # Verify clean exit and expected tool invocations
+    assert result.exit_code == 0
+    expected = (
+        [["rustfmt", "main.rs"]] if fix else [["rustfmt", "--check", "main.rs"]]
+    )
+    assert [
+        invocation.args[0] for invocation in mock_run.call_args_list
+    ] == expected
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_shell_tools_scope_a_directory_to_shell_files(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """Shell tools only receive shell files under checked directories."""
+    # Allow shfmt and shellcheck to appear installed
+    mock_which.side_effect = lambda name: (
+        name if name in ("shfmt", "shellcheck") else None
+    )
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    # Populate directory with shell and non-shell files
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("src/nested").mkdir(parents=True)
+        Path("src/script.sh").touch()
+        Path("src/nested/setup.bash").touch()
+        Path("src/notes.txt").touch()
+        result = runner.invoke(cli, ["check", "src"])
+
+    # Verify tool calls are scoped to matching files
+    assert result.exit_code == 0
+    expected_files = ["src/nested/setup.bash", "src/script.sh"]
+    assert [invocation.args[0] for invocation in mock_run.call_args_list] == [
+        ["shfmt", "-i", "2", "-ci", "-d", *expected_files],
+        ["shellcheck", *expected_files],
+    ]
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_rustfmt_scopes_a_directory_to_rust_files(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """Rustfmt only receives Rust files under checked directories."""
+    # Allow rustfmt to appear installed
+    mock_which.side_effect = lambda name: name if name == "rustfmt" else None
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    # Populate directory with Rust and non-Rust files
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("src/nested").mkdir(parents=True)
+        Path("src/main.rs").touch()
+        Path("src/nested/lib.rs").touch()
+        Path("src/notes.txt").touch()
+        result = runner.invoke(cli, ["check", "src"])
+
+    # Verify tool calls are scoped to matching files
+    assert result.exit_code == 0
+    assert [invocation.args[0] for invocation in mock_run.call_args_list] == [
+        ["rustfmt", "--check", "src/main.rs", "src/nested/lib.rs"]
+    ]
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_shfmt_formatting_findings_reported(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """Non-zero exit from shfmt diff is reported as a formatting finding."""
+    # Allow shfmt to appear installed
+    mock_which.side_effect = lambda name: (
+        name if name in ("shfmt", "shellcheck") else None
+    )
+    mock_run.side_effect = [
+        MagicMock(
+            returncode=1, stdout="--- script.sh\n+++ script.sh\n", stderr=""
+        ),
+        MagicMock(returncode=0, stdout="", stderr=""),
+    ]
+
+    # Run check command
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("script.sh").touch()
+        result = runner.invoke(cli, ["check", "script.sh"])
+
+    # Verify exit code and finding output
+    assert result.exit_code == 1
+    assert "shfmt formatting findings" in result.output
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_shellcheck_findings_reported(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """Non-zero exit from shellcheck is reported as findings."""
+    # Allow shellcheck to appear installed
+    mock_which.side_effect = lambda name: (
+        name if name in ("shfmt", "shellcheck") else None
+    )
+    mock_run.side_effect = [
+        MagicMock(returncode=0, stdout="", stderr=""),
+        MagicMock(
+            returncode=1,
+            stdout="SC2086: Double quote to prevent globbing",
+            stderr="",
+        ),
+    ]
+
+    # Run check command
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("script.sh").touch()
+        result = runner.invoke(cli, ["check", "script.sh"])
+
+    # Verify exit code and finding output
+    assert result.exit_code == 1
+    assert "shellcheck findings" in result.output
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_rustfmt_formatting_findings_reported(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """Non-zero exit from rustfmt check is reported as a formatting finding."""
+    # Allow rustfmt to appear installed
+    mock_which.side_effect = lambda name: name if name == "rustfmt" else None
+    mock_run.return_value = MagicMock(
+        returncode=1, stdout="Diff in main.rs", stderr=""
+    )
+
+    # Run check command
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("main.rs").touch()
+        result = runner.invoke(cli, ["check", "main.rs"])
+
+    # Verify exit code and finding output
+    assert result.exit_code == 1
+    assert "rustfmt formatting findings" in result.output
+
+
+@patch("shutil.which", return_value=None)
+def test_missing_shell_tools_reported(
+    mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """Missing shell tools leave shell files unverified."""
+    # Run check command with missing tools
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("script.sh").touch()
+        result = runner.invoke(cli, ["check", "script.sh"])
+
+    # Verify error message and exit code
+    assert result.exit_code == 1
+    assert "shfmt" in result.stderr
+    assert "shellcheck" in result.stderr
+    assert "nothing was verified" in result.stderr
+
+
+@patch("shutil.which", return_value=None)
+def test_missing_rustfmt_reported(
+    mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """Missing rustfmt leaves Rust files unverified."""
+    # Run check command with missing rustfmt
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("main.rs").touch()
+        result = runner.invoke(cli, ["check", "main.rs"])
+
+    # Verify error message and exit code
+    assert result.exit_code == 1
+    assert "rustfmt" in result.stderr
+    assert "nothing was verified" in result.stderr
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_partial_shell_tools_installed_warns_and_runs_installed(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """A lone installed shell tool runs and warns that the other is absent."""
+    # Only shfmt is installed
+    mock_which.side_effect = lambda name: name if name == "shfmt" else None
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    # Run check command
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("script.sh").touch()
+        result = runner.invoke(cli, ["check", "script.sh"])
+
+    # Verify shfmt ran, shellcheck was skipped with warning, exit code 0
+    assert result.exit_code == 0
+    assert "shellcheck" in result.stderr
+    assert [invocation.args[0] for invocation in mock_run.call_args_list] == [
+        ["shfmt", "-i", "2", "-ci", "-d", "script.sh"]
+    ]
