@@ -1,0 +1,5 @@
+{
+  "extends": ["./readability/configs/biome-default.json"],
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": { "includes": ["**", "!readability/guides"] }
+}
