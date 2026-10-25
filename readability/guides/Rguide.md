@@ -11,6 +11,15 @@ were developed in collaboration with the internal R user community. The rest of
 this document explains Google's primary differences with the Tidyverse guide,
 and why these differences exist.
 
+Google uses the [styler](https://github.com/r-lib/styler) package on every
+checked in file to ensure code consistency and help reviewers focus on more
+important issues.
+
+<!-- mdformat off -->
+* TOC
+{:toc}
+<!-- mdformat on -->
+
 ## Syntax
 
 ### Naming conventions
@@ -18,8 +27,9 @@ and why these differences exist.
 Google prefers identifying functions with `BigCamelCase` to clearly distinguish
 them from other objects.
 
-```
-# Good
+<div class='goodcode'></div>
+
+```r
 DoNothing <- function() {
   return(invisible(NULL))
 }
@@ -28,8 +38,9 @@ DoNothing <- function() {
 The names of private functions should begin with a dot. This helps communicate
 both the origin of the function and its intended use.
 
-```
-# Good
+<div class='goodcode'></div>
+
+```r
 .DoNothingPrivately <- function() {
   return(invisible(NULL))
 }
@@ -48,8 +59,9 @@ The possibilities for creating errors when using `attach()` are numerous.
 
 We do not support using right-hand assignment.
 
-```
-# Bad
+<div class='badcode'></div>
+
+```r
 iris %>%
   dplyr::summarize(max_petal = max(Petal.Width)) -> results
 ```
@@ -64,13 +76,17 @@ lines).
 Do not rely on R's implicit return feature. It is better to be clear about your
 intent to `return()` an object.
 
-```
-# Good
+<div class='goodcode'></div>
+
+```r
 AddValues <- function(x, y) {
   return(x + y)
 }
+```
 
-# Bad
+<div class='badcode'></div>
+
+```r
 AddValues <- function(x, y) {
   x + y
 }
@@ -80,8 +96,9 @@ AddValues <- function(x, y) {
 
 Users should explicitly qualify namespaces for all external functions.
 
-```
-# Good
+<div class='goodcode'></div>
+
+```r
 purrr::map()
 ```
 
@@ -95,8 +112,8 @@ understand dependencies in your code. There are some exceptions to this rule.
 *   Infix functions (`%name%`) always need to be imported.
 *   Certain `rlang` pronouns, notably `.data`, need to be imported.
 *   Functions from default R packages, including `datasets`, `utils`,
-   `grDevices`, `graphics`, `stats` and `methods`. If needed, you can `@import`
-   the full package.
+    `grDevices`, `graphics`, `stats` and `methods`. If needed, you can `@import`
+    the full package.
 
 When importing functions, place the `@importFrom` tag in the Roxygen header
 above the function where the external dependency is used.
@@ -107,3 +124,9 @@ above the function where the external dependency is used.
 
 All packages should have a package documentation file, in a
 `packagename-package.R` file.
+
+## Errors
+
+### Use of bullets
+
+We prefer ASCII style bullets (`*`) to unicode when producing error messages.

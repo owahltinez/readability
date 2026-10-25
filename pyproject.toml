@@ -11,7 +11,6 @@ dependencies = [
 # Only `sync` fetches and converts guides; the rest reads bundled copies.
 [project.optional-dependencies]
 sync = [
-    "beautifulsoup4>=4.14.3",
     "markdownify>=1.2.2",
     "requests>=2.33.0",
 ]

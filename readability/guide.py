@@ -5,7 +5,6 @@ from importlib.resources import files
 import logging
 import os
 import types
-import warnings
 
 import click
 
@@ -13,22 +12,19 @@ logger = logging.getLogger("readability")
 
 
 @functools.cache
-def load_sync_deps() -> tuple[
-    types.ModuleType, types.ModuleType, types.ModuleType
-]:
+def load_sync_deps() -> tuple[types.ModuleType, types.ModuleType]:
     """Imports the libraries only the guide refresh needs.
 
     Guides ship pre-converted, so this stack stays out of the default
     install rather than charging every user for `sync`.
 
     Returns:
-        The requests, bs4, and markdownify modules.
+        The requests and markdownify modules.
 
     Raises:
         click.ClickException: If the sync extra is not installed.
     """
     try:
-        import bs4  # noqa: PLC0415
         import markdownify  # noqa: PLC0415
         import requests  # noqa: PLC0415
     except ImportError as e:
@@ -37,8 +33,7 @@ def load_sync_deps() -> tuple[
             "with: pip install 'readability-cli[sync]'"
         ) from e
 
-    warnings.filterwarnings("ignore", category=bs4.XMLParsedAsHTMLWarning)
-    return requests, bs4, markdownify
+    return requests, markdownify
 
 
 def get_guides_dir() -> str:
@@ -60,22 +55,22 @@ LANGUAGE_MAP = {
     "objc": "objcguide.md",
     "objective-c": "objcguide.md",
     "r": "Rguide.md",
-    "csharp": "csharp-style.md",
-    "c#": "csharp-style.md",
+    "csharp": "csharpguide.md",
+    "c#": "csharpguide.md",
     "docguide": "docguide/style.md",
     "markdown": "docguide/style.md",
     "go": "go/guide.md",
     "cpp": "cppguide.html",
     "c++": "cppguide.html",
     "java": "javaguide.html",
-    "js": "jsguide.html",
-    "javascript": "jsguide.html",
+    "js": "jsguide.md",
+    "javascript": "jsguide.md",
     "ts": "tsguide.html",
     "typescript": "tsguide.html",
-    "html": "htmlcssguide.html",
-    "css": "htmlcssguide.html",
-    "json": "jsoncstyleguide.xml",
-    "vim": "vimscriptguide.xml",
+    "html": "htmlcssguide.md",
+    "css": "htmlcssguide.md",
+    "json": "jsoncguide.md",
+    "vim": "vimscriptguide.md",
 }
 
 BASE_URL = "https://google.github.io/styleguide/"
@@ -96,7 +91,7 @@ def get_guide_content(url: str) -> str:
     Raises:
         click.ClickException: If the HTTP request fails.
     """
-    requests, _, _ = load_sync_deps()
+    requests, _ = load_sync_deps()
     logger.info("Fetching style guide from %s", url)
 
     try:
@@ -121,65 +116,11 @@ def convert_to_markdown(content: str, filename: str) -> str:
     Returns:
         The converted markdown content.
     """
-    _, bs4, markdownify = load_sync_deps()
+    _, markdownify = load_sync_deps()
     logger.debug("Converting content for %s", filename)
 
     if filename.endswith(".md"):
         return content
-
-    # Strip XML prologue if present to avoid it leaking into the output
-    if content.lstrip().startswith("<?xml"):
-        content = content.split("?>", 1)[-1].lstrip()
-
-    # The Vim script and JSON guides are only published as XML
-    if filename.endswith(".xml"):
-        soup = bs4.BeautifulSoup(content, "html.parser")
-
-        guide = soup.find("guide")
-        if guide:
-            title = guide.get("title")
-            if isinstance(title, str) and title:
-                h1 = soup.new_tag("h1")
-                h1.string = title
-                guide.insert(0, h1)
-
-        for category in soup.find_all("category"):
-            title = category.get("title")
-            if isinstance(title, str) and title:
-                h2 = soup.new_tag("h2")
-                h2.string = title
-                category.insert(0, h2)
-
-        for sp in soup.find_all("stylepoint"):
-            title = sp.get("title")
-            if isinstance(title, str) and title:
-                h3 = soup.new_tag("h3")
-                h3.string = title
-                sp.insert(0, h3)
-
-        for summary in soup.find_all("summary"):
-            summary.name = "p"
-            content_str = summary.decode_contents()
-            summary.clear()
-            strong = soup.new_tag("strong")
-            strong.append(bs4.BeautifulSoup(content_str, "html.parser"))
-            summary.append(strong)
-
-        for snippet in soup.find_all(["code_snippet", "bad_code_snippet"]):
-            is_bad = snippet.name == "bad_code_snippet"
-            snippet.name = "pre"
-            code = soup.new_tag("code")
-            code.string = snippet.get_text()
-            snippet.clear()
-            if is_bad:
-                p = soup.new_tag("p")
-                strong = soup.new_tag("strong")
-                strong.string = "BAD:"
-                p.append(strong)
-                snippet.append(p)
-            snippet.append(code)
-
-        return markdownify.markdownify(str(soup), **MARKDOWNIFY_OPTIONS)
 
     if filename.endswith(".html"):
         return markdownify.markdownify(content, **MARKDOWNIFY_OPTIONS)

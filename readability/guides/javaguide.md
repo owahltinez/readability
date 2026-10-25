@@ -723,23 +723,23 @@ per line). These line breaks do not constitute line-wrapping (Section
 increased. Examples:
 
 ```
-/** This is a class. */
+/// This is a class.
 @Deprecated
 @CheckReturnValue
 public final class Frozzler { ... }
 ```
 
 ```
-/** This is a package. */
+/// This is a package.
 @Deprecated
 @CheckReturnValue
 package com.example.frozzler;
 ```
 
 ```
-/** This is a module. */
+/// This is a module.
 @Deprecated
-@SuppressWarnings("CheckReturnValue") // TODO: b/123 - Fix existing CRV violations.
+@SuppressWarnings("CheckReturnValue") // TODO(b/123): Fix existing CRV violations.
 module com.example.frozzler { ... }
 ```
 
@@ -1099,7 +1099,16 @@ is [*scheduled for removal*](https://openjdk.org/jeps/421).
 
 #### 7.1.1 General form
 
-The *basic* formatting of Javadoc blocks is as seen in this example:
+Both Markdown Javadoc and Traditional Javadoc are acceptable. Markdown Javadoc looks like this
+example:
+
+```
+/// Javadoc text is written here,
+/// wrapped normally...
+public int method(String p1) { ... }
+```
+
+The *basic* formatting of Traditional Javadoc blocks is as seen in this example:
 
 ```
 /**
@@ -1121,18 +1130,24 @@ applies when there are no block tags such as `@param`.
 
 #### 7.1.2 Paragraphs
 
-One blank line—that is, a line containing only the aligned leading asterisk
-(`*`)—appears between paragraphs, and before the group of block tags if present.
-Each paragraph except the first has `<p>` immediately before the first word, with
-no space after it. HTML tags for other block-level elements, such as `<ul>` or
-`<table>`, are *not* preceded with `<p>`.
+With Traditional Javadoc, one blank line—that is, a line containing only the aligned
+leading asterisk (`*`)—appears between paragraphs, and before the group of
+block tags if present. Each paragraph except the first has `<p>` immediately
+before the first word, with no space after it. HTML tags for other block-level elements, such
+as `<ul>` or `<table>`, are *not* preceded with
+`<p>`.
+
+With Markdown Javadoc, paragraphs are separated as usual for Markdown, by a line that is blank
+apart from the leading `///`. No `<p>` is needed.
 
 #### 7.1.3 Block tags
 
 Any of the standard "block tags" that are used appear in the order `@param`,
 `@return`, `@throws`, `@deprecated`, and these four types never
 appear with an empty description. When a block tag doesn't fit on a single line, continuation lines
-are indented four (or more) spaces from the position of the `@`.
+are indented four (or more) spaces from the position of the `@` for Traditional Javadoc,
+and exactly two spaces for Markdown Javadoc. (A four-space indentation in Markdown is interpreted as
+an indented code block in some contexts.)
 
 ### 7.2 The summary fragment
 
@@ -1141,16 +1156,16 @@ fragment is very important: it is the only part of the text that appears in cert
 class and method indexes.
 
 This is a fragment—a noun phrase or verb phrase, not a complete sentence. It does
-**not** begin with `A {@code Foo} is a...`, or
+**not** begin with `` A `Foo` is a... ``, or
 `This method returns...`, nor does it form a complete imperative sentence
 like `Save the record.`. However, the fragment is capitalized and
 punctuated as if it were a complete sentence.
 
 **Tip:** A common mistake is to write simple Javadoc in the form
-`/** @return the customer ID */`. This is
+`/// @return the customer ID`. This is
 incorrect, and should be changed to
-`/** Returns the customer ID. */` or
-`/** {@return the customer ID} */`.
+`/// Returns the customer ID.` or
+`/// {@return the customer ID}`.
 
 ### 7.3 Where Javadoc is used
 
@@ -1183,7 +1198,8 @@ Javadoc is not always present on a method that overrides a supertype method.
 Other classes, members, and record components have Javadoc *as needed or desired*.
 
 Whenever an implementation comment would be used to define the overall purpose or behavior of a
-class or member, that comment is written as Javadoc instead (using `/**`).
+class or member, that comment is written as Javadoc instead (using `///` or
+`/**`).
 
 Non-required Javadoc is not strictly required to follow the formatting rules of Sections
 7.1.1, 7.1.2, 7.1.3, and 7.2, though it is of course recommended.

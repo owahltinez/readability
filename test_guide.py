@@ -75,13 +75,6 @@ def test_convert_to_markdown_keeps_underscores() -> None:
     assert "\\_" not in result
 
 
-def test_convert_to_markdown_xml() -> None:
-    """Tests conversion for XML files."""
-    content = "<guide><title>Vim</title></guide>"
-    result = convert_to_markdown(content, "guide.xml")
-    assert "Vim" in result
-
-
 def test_get_local_path() -> None:
     """Tests the get_local_path function for flattening filenames."""
     # Simple filename
