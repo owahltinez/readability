@@ -1030,7 +1030,7 @@ def test_bundled_default_configs_are_valid() -> None:
         "indentWidth": 2,
         "lineWidth": 80,
     }
-    assert biome_config["linter"]["rules"]["recommended"] is True
+    assert biome_config["linter"]["rules"]["preset"] == "recommended"
     assert biome_config["html"]["parser"]["interpolation"] is True
 
     # The ruff defaults follow the Google Python style guide
