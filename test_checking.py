@@ -988,6 +988,48 @@ def test_biome_bundled_config_is_injected_into_every_command(
         assert "--vcs-enabled=true" not in command
 
 
+def test_biome_bundled_config_skips_files_git_ignores(tmp_path: Path) -> None:
+    """In a repository, ignored files are left out, never left to Biome.
+
+    Biome's own ignore support panics when its config sits outside the
+    repository, so the files git ignores are dropped before Biome sees them.
+    """
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / ".gitignore").write_text("dist/\ngenerated.ts\n")
+    (tmp_path / "dist").mkdir()
+    (tmp_path / "dist" / "bundle.js").touch()
+    (tmp_path / "generated.ts").touch()
+    (tmp_path / "app.ts").touch()
+
+    (biome,) = [
+        tool
+        for tool in _get_tool_definitions(tmp_path, tmp_path)
+        if tool.name == "biome"
+    ]
+
+    assert biome.targets == (str(tmp_path / "app.ts"),)
+    for command_name in ("check", "check_format", "fix", "format"):
+        command = getattr(biome, command_name)
+        assert command[-1] == str(tmp_path / "app.ts")
+        assert not any(argument.startswith("--vcs") for argument in command)
+
+
+def test_biome_does_not_run_on_a_file_git_ignores(tmp_path: Path) -> None:
+    """A generated file named directly is still not Biome's to rewrite."""
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / ".gitignore").write_text("generated.ts\n")
+    generated = tmp_path / "generated.ts"
+    generated.touch()
+
+    (biome,) = [
+        tool
+        for tool in _get_tool_definitions(generated, tmp_path)
+        if tool.name == "biome"
+    ]
+
+    assert biome.targets == ()
+
+
 @pytest.mark.parametrize(
     "ignore_file", (".gitignore", ".ignore", ".git/info/exclude")
 )

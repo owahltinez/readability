@@ -7,6 +7,7 @@ import logging
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import tomllib
 
 logger = logging.getLogger("readability")
@@ -199,8 +200,47 @@ def _config_roots_below(
     return found
 
 
+def _unignored(targets: Sequence[str], project_root: Path) -> list[str] | None:
+    """Drop the files git ignores, so Biome is never handed them.
+
+    Biome 2.5.15 and later panic reading ignore files for a config outside
+    the repository, so in a repository git filters instead.
+
+    Args:
+        targets: Files to hand Biome.
+        project_root: A directory inside the repository.
+
+    Returns:
+        The targets git does not ignore, or None when git cannot tell, as
+        outside a repository or without git.
+    """
+    if _repository_root(project_root) is None:
+        return None
+    if not targets:
+        return []
+    # Absolute so git can place them; symlinks are left for git to judge
+    absolute = {str(Path(target).absolute()): target for target in targets}
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(project_root), "check-ignore", "--stdin", "-z"],
+            input="\0".join(absolute),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    # 1 means nothing is ignored; anything else besides 0 is a failure
+    if result.returncode not in (0, 1):
+        return None
+    ignored = set(result.stdout.split("\0"))
+    return [target for path, target in absolute.items() if path not in ignored]
+
+
 def _vcs_args(project_root: Path) -> list[str]:
     """Point Biome at the ignore files a config outside the project hides.
+
+    Only used where git cannot filter the files, as outside a repository.
 
     Args:
         project_root: The directory holding the repository's ignore files.
@@ -547,16 +587,24 @@ def _get_tool_definitions(
         built = []
         for root, targets, excludes in _config_groups(path, boundary, tool):
             config = []
+            named = targets
             if root is None:
                 flag = CONFIG_SOURCES[tool][2]
                 config = [flag, str(_bundled_config(tool))]
-                # Only Biome needs telling where the ignore files are
+                # Only Biome needs keeping away from ignored files
                 if tool == "biome":
-                    config += _vcs_args(project_root)
+                    owned = targets
+                    if owned is None:
+                        owned = _matching_paths(path, TOOL_EXTENSIONS[tool])
+                    kept = _unignored(owned, project_root)
+                    if kept is None:
+                        config += _vcs_args(project_root)
+                    else:
+                        named = kept
             # Biome alone resolves config from where it was started
             cwd = root if tool == "biome" else None
             built.append(
-                _plan(tool, binary, config, targets, path, excludes, cwd)
+                _plan(tool, binary, config, named, path, excludes, cwd)
             )
         return built
 
