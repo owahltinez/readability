@@ -118,6 +118,12 @@ to Ruff's — which has published seventeen minor series, roughly one every six
 weeks. If you need a fixed version, install it: an installed tool always wins
 over a fetched one.
 
+Biome is the temporary exception, pinned to 2.5.14: from 2.5.15 it panics
+(`path is expected to be under the root`) when the bundled config sits outside
+the repository being checked, which is every project without its own
+`biome.json` ([biomejs/biome#12158](https://github.com/biomejs/biome/issues/12158)).
+The pin goes once upstream fixes it.
+
 Set `UV_OFFLINE=1` to forbid fetching. A tool that then cannot be reached fails
 the run rather than passing it.
 
@@ -190,8 +196,8 @@ For Python, add `[tool.ruff]` or `[tool.pyrefly]` to `pyproject.toml`, or use
 their native project configurations in place of bundled defaults. Readability
 does not interpret EditorConfig itself; a canonical tool such as Biome may opt
 into it through that tool's native configuration. Neither gofmt nor goimports
-has project settings. The bundled Biome file requires Biome 2.5 or later,
-matching the fallback runner's version floor.
+has project settings. The bundled Biome file requires Biome 2.5 or later; the
+fallback runner is pinned to 2.5.14 for now.
 
 Configuration is found per file, in the file's own directory and then its
 ancestors, which is where each canonical tool looks. A package keeping its

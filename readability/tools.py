@@ -329,7 +329,8 @@ def _plan(
 TOOL_RUNNERS = {
     "ruff": ["uvx", "ruff>=0.15"],
     "pyrefly": ["uvx", "pyrefly>=1.2"],
-    "biome": ["npx", "-y", "@biomejs/biome@>=2.5"],
+    # Pinned until 2.5.15's panic with an external config is fixed upstream
+    "biome": ["npx", "-y", "@biomejs/biome@2.5.14"],
 }
 
 # One formatter owner per extension; configuration never changes selection

@@ -215,7 +215,7 @@ def test_check_command_biome(
         assert [
             "npx",
             "-y",
-            "@biomejs/biome@>=2.5",
+            "@biomejs/biome@2.5.14",
             phase,
             "--no-errors-on-unmatched",
             str((Path(cwds[0]) / "script.js").resolve()),
@@ -2166,6 +2166,9 @@ def test_every_runner_floors_a_version(tmp_path: Path) -> None:
     release of theirs. The first ceiling written here was stale in two days.
     """
     for binary, runner in TOOL_RUNNERS.items():
+        # Biome is pinned until biomejs/biome#12158 is fixed upstream
+        if binary == "biome":
+            continue
         spec = runner[-1]
         assert ">=" in spec, f"{binary} has no floor: {spec}"
         assert "<" not in spec, f"{binary} has a ceiling: {spec}"
