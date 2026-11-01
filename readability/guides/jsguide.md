@@ -1410,6 +1410,11 @@ doSomething(
 }
 ```
 
+The
+[rectangle rule](https://github.com/google/google-java-format/wiki/The-Rectangle-Rule)
+asks that each part of a wrapped expression fit in its own bounding rectangle,
+which contains all of that part's text and none of any other part's.
+
 <a id="formatting-grouping-parentheses"></a>
 
 ### 4.7 Grouping parentheses: recommended
@@ -2839,8 +2844,9 @@ been banned in strict mode since ES5.
 #### 5.11.2 Dynamic code evaluation
 
 Do not use `eval` or the `Function(...string)` constructor (except for code
-loaders). These features are potentially dangerous and simply do not work in CSP
-environments.
+loaders). These features are potentially dangerous and simply do not work in
+environments with a
+[Content Security Policy (CSP)](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CSP).
 
 <a id="disallowed-features-automatic-semicolon-insertion"></a>
 
