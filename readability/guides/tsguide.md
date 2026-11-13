@@ -1,192 +1,31 @@
-Google Style Guides | Style guides for Google-originated open-source projects
-
-
-
-# [Google Style Guides](https://google.github.io/styleguide/)
+<div class="numbered"></div>
 
 # TS/JS Style Guide
 
 This guide is based on the internal Google TypeScript style guide, but it has
-been slightly adjusted to remove Google-internal sections. Google’s internal
+been slightly adjusted to remove Google-internal sections. Google's internal
 environment has different constraints on TypeScript than you might find outside
 of Google. The advice here is specifically useful for people authoring code they
 intend to import into Google, but otherwise may not apply in your external
 environment.
 
-There is no automatic deployment process for this version as it’s pushed
+There is no automatic deployment process for this version as it's pushed
 on-demand by volunteers.
 
-* [TS/JS Style Guide](#tsjs-style-guide)
-  + [Introduction](#introduction)
-    - [Terminology notes](#terminology-notes)
-    - [Guide notes](#guide-notes)
-  + [Source file basics](#source-file-basics)
-    - [File encoding: UTF-8](#file-encoding-utf-8)
-      * [Whitespace characters](#whitespace-characters)
-      * [Special escape sequences](#special-escape-sequences)
-      * [Non-ASCII characters](#non-ascii-characters)
-  + [Source file structure](#source-file-structure)
-    - [Copyright information](#copyright-information)
-    - [`@fileoverview` JSDoc](#fileoverview-jsdoc)
-    - [Imports](#imports)
-      * [Import paths](#import-paths)
-      * [Namespace versus named imports](#namespace-versus-named-imports)
-        + [Special case: Apps JSPB protos](#special-case-apps-jspb-protos)
-      * [Renaming imports](#renaming-imports)
-    - [Exports](#exports)
-      * [Export visibility](#export-visibility)
-      * [Mutable exports](#mutable-exports)
-      * [Container classes](#container-classes)
-    - [Import and export type](#import-and-export-type)
-      * [Import type](#import-type)
-      * [Export type](#export-type)
-      * [Dynamic `import()` type](#dynamic-import-type)
-      * [Use modules not namespaces](#use-modules-not-namespaces)
-  + [Language features](#language-features)
-    - [Local variable declarations](#local-variable-declarations)
-      * [Use const and let](#use-const-and-let)
-      * [One variable per declaration](#one-variable-per-declaration)
-    - [Array literals](#array-literals)
-      * [Do not use the `Array` constructor](#do-not-use-the-array-constructor)
-      * [Do not define properties on arrays](#do-not-define-properties-on-arrays)
-      * [Array destructuring](#array-destructuring)
-    - [Object literals](#object-literals)
-      * [Do not use the `Object` constructor](#do-not-use-the-object-constructor)
-      * [Iterating objects](#iterating-objects)
-      * [Using spread syntax](#using-spread-syntax)
-      * [Computed property names](#computed-property-names)
-      * [Object destructuring](#object-destructuring)
-    - [Classes](#classes)
-      * [Class declarations](#class-declarations)
-      * [Don’t create member variables only used in constructors](#dont-create-member-variables-only-used-in-constructors)
-      * [Class method declarations](#class-method-declarations)
-        + [Overriding toString](#overriding-tostring)
-      * [Static methods](#static-methods)
-        + [Avoid private static methods](#avoid-private-static-methods)
-        + [Do not rely on dynamic dispatch](#do-not-rely-on-dynamic-dispatch)
-        + [Avoid static `this` references](#avoid-static-this-references)
-      * [Constructors](#constructors)
-      * [Class members](#class-members)
-        + [No #private fields](#no-private-fields)
-        + [Use readonly](#use-readonly)
-        + [Parameter properties](#parameter-properties)
-        + [Field initializers](#field-initializers)
-        + [Properties used outside of class lexical scope](#properties-used-outside-of-class-lexical-scope)
-        + [Getters and setters](#getters-and-setters)
-        + [Computed properties](#computed-properties)
-      * [Visibility](#visibility)
-      * [Disallowed class patterns](#disallowed-class-patterns)
-        + [Do not manipulate `prototype`s directly](#do-not-manipulate-prototypes-directly)
-    - [Functions](#functions)
-      * [Terminology](#terminology)
-      * [Prefer function declarations for named functions](#prefer-function-declarations-for-named-functions)
-      * [Nested functions](#nested-functions)
-      * [Do not use function expressions](#do-not-use-function-expressions)
-      * [Arrow function bodies](#arrow-function-bodies)
-      * [Rebinding `this`](#rebinding-this)
-      * [Prefer passing arrow functions as callbacks](#prefer-passing-arrow-functions-as-callbacks)
-      * [Arrow functions as properties](#arrow-functions-as-properties)
-      * [Event handlers](#event-handlers)
-      * [Parameter initializers](#parameter-initializers)
-      * [Prefer rest and spread when appropriate](#prefer-rest-and-spread-when-appropriate)
-      * [Formatting functions](#formatting-functions)
-      * [Function Length](#function-length)
-    - [this](#this)
-    - [Primitive literals](#primitive-literals)
-      * [String literals](#string-literals)
-        + [Use single quotes](#use-single-quotes)
-        + [No line continuations](#no-line-continuations)
-        + [Template literals](#template-literals)
-      * [Number literals](#number-literals)
-      * [Type coercion](#type-coercion)
-        + [Coercing to numbers](#coercing-to-numbers)
-        + [Implicit coercion](#implicit-coercion)
-    - [Control structures](#control-structures)
-      * [Control flow statements and blocks](#control-flow-statements-and-blocks)
-        + [Assignment in control statements](#assignment-in-control-statements)
-        + [Iterating containers](#iterating-containers)
-      * [Grouping parentheses](#grouping-parentheses)
-      * [Exception handling](#exception-handling)
-        + [Instantiate errors using `new`](#instantiate-errors-using-new)
-        + [Only throw errors](#only-throw-errors)
-        + [Catching and rethrowing](#catching-and-rethrowing)
-        + [Empty catch blocks](#empty-catch-blocks)
-        + [ErrorOptions cause must be an Error object](#erroroptions-cause-must-be-an-error-object)
-      * [Switch statements](#switch-statements)
-      * [Equality checks](#equality-checks)
-      * [Type and non-nullability assertions](#type-and-non-nullability-assertions)
-        + [Type assertion syntax](#type-assertion-syntax)
-        + [Double assertions](#double-assertions)
-        + [Type assertions and object literals](#type-assertions-and-object-literals)
-      * [Keep try blocks focused](#keep-try-blocks-focused)
-    - [Decorators](#decorators)
-    - [Disallowed features](#disallowed-features)
-      * [Wrapper objects for primitive types](#wrapper-objects-for-primitive-types)
-      * [Automatic Semicolon Insertion](#automatic-semicolon-insertion)
-      * [Const enums](#const-enums)
-      * [Debugger statements](#debugger-statements)
-      * [`with`](#with)
-      * [Dynamic code evaluation](#dynamic-code-evaluation)
-      * [Non-standard features](#non-standard-features)
-      * [Modifying built-in objects](#modifying-built-in-objects)
-  + [Naming](#naming)
-    - [Identifiers](#identifiers)
-      * [Naming style](#naming-style)
-      * [Descriptive names](#descriptive-names)
-      * [Camel case](#camel-case)
-      * [Dollar sign](#dollar-sign)
-    - [Rules by identifier type](#rules-by-identifier-type)
-      * [Type parameters](#type-parameters)
-      * [Test names](#test-names)
-      * [Underscore (`_`) prefix/suffix](#underscore-_-prefixsuffix)
-      * [Imports](#imports-1)
-      * [Constants](#constants)
-      * [Aliases](#aliases)
-  + [Type system](#type-system)
-    - [Type inference](#type-inference)
-      * [Return types](#return-types)
-    - [Undefined and null](#undefined-and-null)
-      * [Nullable/undefined type aliases](#nullableundefined-type-aliases)
-    - [Use structural types](#use-structural-types)
-    - [Prefer interfaces over type literal aliases](#prefer-interfaces-over-type-literal-aliases)
-    - [`Array<T>` Type](#arrayt-type)
-    - [Indexable types / index signatures (`{[key: string]: T}`)](#indexable-types--index-signatures-key-string-t)
-    - [Mapped and conditional types](#mapped-and-conditional-types)
-    - [`any` Type](#any-type)
-      * [Providing a more specific type](#providing-a-more-specific-type)
-      * [Using `unknown` over `any`](#using-unknown-over-any)
-      * [Suppressing `any` lint warnings](#suppressing-any-lint-warnings)
-    - [`{}` Type](#-type)
-    - [Tuple types](#tuple-types)
-    - [Wrapper types](#wrapper-types)
-    - [Return type only generics](#return-type-only-generics)
-  + [Toolchain requirements](#toolchain-requirements)
-    - [TypeScript compiler](#typescript-compiler)
-      * [@ts-ignore](#ts-ignore)
-    - [Conformance](#conformance)
-  + [Comments and documentation](#comments-and-documentation)
-    - [JSDoc versus comments](#jsdoc-versus-comments)
-    - [Multi-line comments](#multi-line-comments)
-    - [JSDoc general form](#jsdoc-general-form)
-    - [Markdown](#markdown)
-    - [JSDoc tags](#jsdoc-tags)
-    - [Line wrapping](#line-wrapping)
-    - [Document all top-level exports of modules](#document-all-top-level-exports-of-modules)
-    - [Class comments](#class-comments)
-    - [Method and function comments](#method-and-function-comments)
-    - [Parameter property comments](#parameter-property-comments)
-    - [JSDoc type annotations](#jsdoc-type-annotations)
-    - [Make comments that actually add information](#make-comments-that-actually-add-information)
-      * [Comments when calling a function](#comments-when-calling-a-function)
-    - [Place documentation prior to decorators](#place-documentation-prior-to-decorators)
-  + [Policies](#policies)
-    - [Consistency](#consistency)
-      * [Reformatting existing code](#reformatting-existing-code)
-    - [Deprecation](#deprecation)
-    - [Generated code: mostly exempt](#generated-code-mostly-exempt)
-      * [Style guide goals](#style-guide-goals)
+<!-- mdformat off -->
+* TOC
+{:toc}
+<!-- mdformat on -->
+
+<div class="numbered"></div>
+
+<a id="introduction"></a>
 
 ## Introduction
+
+<div class="numbered"></div>
+
+<a id="terminology-notes"></a>
 
 ### Terminology notes
 
@@ -196,6 +35,10 @@ and *may*. The terms *prefer* and *avoid* correspond to *should* and *should
 not*, respectively. Imperative and declarative statements are prescriptive and
 correspond to *must*.
 
+<div class="numbered"></div>
+
+<a id="guide-notes"></a>
+
 ### Guide notes
 
 All examples given are **non-normative** and serve only to illustrate the
@@ -203,11 +46,27 @@ normative language of the style guide. That is, while the examples are in Google
 Style, they may not illustrate the *only* stylish way to represent the code.
 Optional formatting choices made in examples must not be enforced as rules.
 
+<div class="numbered"></div>
+
+<a id="source-file-basics"></a>
+
 ## Source file basics
+
+<a id="file-encoding"></a>
+
+<div class="numbered"></div>
+
+<a id="file-encoding-utf-8"></a>
 
 ### File encoding: UTF-8
 
 Source files are encoded in **UTF-8**.
+
+<a id="special-characters"></a>
+
+<div class="numbered"></div>
+
+<a id="whitespace-characters"></a>
 
 #### Whitespace characters
 
@@ -216,12 +75,20 @@ Aside from the line terminator sequence, the ASCII horizontal space character
 This implies that all other whitespace characters in string literals are
 escaped.
 
+<div class="numbered"></div>
+
+<a id="special-escape-sequences"></a>
+
 #### Special escape sequences
 
-For any character that has a special escape sequence (`\'`, `\"`, `\\` , `\b`,
+For any character that has a special escape sequence (`\'`, `\"`, `\\ `, `\b`,
 `\f`, `\n`, `\r`, `\t`, `\v`), that sequence is used rather than the
 corresponding numeric escape (e.g `\x0a`, `\u000a`, or `\u{a}`). Legacy octal
 escapes are never used.
+
+<div class="numbered"></div>
+
+<a id="non-ascii-characters"></a>
 
 #### Non-ASCII characters
 
@@ -229,7 +96,9 @@ For the remaining non-ASCII characters, use the actual Unicode character (e.g.
 `∞`). For non-printable characters, the equivalent hex or Unicode escapes (e.g.
 `\u221e`) can be used along with an explanatory comment.
 
-```
+<div class='goodcode'></div>
+
+```ts
 // Perfectly clear, even without a comment.
 const units = 'μs';
 
@@ -237,7 +106,9 @@ const units = 'μs';
 const output = '\ufeff' + content;  // byte order mark
 ```
 
-```
+<div class='badcode'></div>
+
+```ts
 // Hard to read and prone to mistakes, even with the comment.
 const units = '\u03bcs'; // Greek letter mu, 's'
 
@@ -245,49 +116,79 @@ const units = '\u03bcs'; // Greek letter mu, 's'
 const output = '\ufeff' + content;
 ```
 
+<a id="modules"></a>
+<a id="source-organization"></a>
+
+<div class="numbered"></div>
+
+<a id="source-file-structure"></a>
+
 ## Source file structure
 
 Files consist of the following, **in order**:
 
-1. Copyright information, if present
-2. JSDoc with `@fileoverview` and/or other file-level JSDoc tags if present.
-3. Imports, if present
-4. The file’s implementation
+1.  Copyright information, if present
+2.  JSDoc with `@fileoverview` and/or other file-level JSDoc tags if present.
+3.  Imports, if present
+4.  The file’s implementation
 
 **Exactly one blank line** separates each section that is present.
+
+<div class="numbered"></div>
+
+<a id="file-copyright"></a>
 
 ### Copyright information
 
 If license or copyright information is necessary in a file, add it in a JSDoc at
 the top of the file.
 
+<a id="file-fileoverview"></a>
+<a id="jsdoc-top-file-level-comments"></a>
+
+<div class="numbered"></div>
+
+<a id="fileoverview"></a>
+
 ### `@fileoverview` JSDoc
 
 A file may have a top-level `@fileoverview` JSDoc. If present, it may provide a
-description of the file’s content, its uses, or information about its
+description of the file's content, its uses, or information about its
 dependencies. Wrapped lines are not indented.
 
 Example:
 
-```
+<div class='goodcode'></div>
+
+```ts
 /**
  * @fileoverview Description of file. Lorem ipsum dolor sit amet, consectetur
  * adipiscing elit, sed do eiusmod tempor incididunt.
  */
 ```
 
+<div class="numbered"></div>
+
+<a id="imports"></a>
+
 ### Imports
 
 There are four variants of import statements in ES6 and TypeScript:
 
-| Import type | Example | Use for |
-| --- | --- | --- |
-| module[1](#fn:module_import) | `import * as foo from '...';` | TypeScript imports |
-| named[2](#fn:destructuring_import) | `import {SomeThing} from '...';` | TypeScript imports |
-| default | `import SomeThing from '...';` | Only for other external code that requires them |
-| side-effect | `import '...';` | Only to import libraries for their side-effects on load (such as custom elements) |
+<!-- mdformat off -->
 
-```
+| Import type                  | Example                          | Use for            |
+| ---------------------------- | -------------------------------- | ------------------ |
+| module[^module_import]       | `import * as foo from '...';`    | TypeScript imports |
+| named[^destructuring_import] | `import {SomeThing} from '...';` | TypeScript imports |
+| default                      | `import SomeThing from '...';`   | Only for other external code that requires them |
+| side-effect                  | `import '...';`                  | Only to import libraries for their side-effects on load (such as custom elements) |
+
+<!-- mdformat on -->
+
+<div class='goodcode'></div>
+
+```ts
 // Good: choose between two options as appropriate (see below).
 import * as ng from '@angular/core';
 import {Foo} from './foo';
@@ -299,6 +200,14 @@ import Button from 'Button';
 import 'jasmine';
 import '@polymer/paper-button';
 ```
+
+[^module_import]: Namespace imports are often called 'module imports'
+[^destructuring_import]: named imports are sometimes called 'destructuring
+    imports' because they use similar syntax to destructuring assignments.
+
+<div class="numbered"></div>
+
+<a id="import-paths"></a>
 
 #### Import paths
 
@@ -313,29 +222,41 @@ allows to move the project around without introducing changes in these imports.
 Consider limiting the number of parent steps (`../../../`) as those can make
 module and path structures hard to understand.
 
-```
+<div class='goodcode'></div>
+
+```ts
 import {Symbol1} from 'path/from/root';
 import {Symbol2} from '../parent/file';
 import {Symbol3} from './sibling';
 ```
+
+<!-- Keep the previous id for backwards compatibility with links. -->
+
+<a id="module-versus-destructuring-import"></a>
+
+<div class="numbered"></div>
+
+<a id="namespace-versus-named-imports"></a>
 
 #### Namespace versus named imports
 
 Both namespace and named imports can be used.
 
 Prefer named imports for symbols used frequently in a file or for symbols that
-have clear names, for example Jasmine’s `describe` and `it`. Named imports can
+have clear names, for example Jasmine's `describe` and `it`. Named imports can
 be aliased to clearer names as needed with `as`.
 
 Prefer namespace imports when using many different symbols from large APIs. A
 namespace import, despite using the `*` character, is not comparable to a
-“wildcard” import as seen in other languages. Instead, namespace imports give a
+"wildcard" import as seen in other languages. Instead, namespace imports give a
 name to all the exports of a module, and each exported symbol from the module
 becomes a property on the module name. Namespace imports can aid readability for
 exported symbols that have common names like `Model` or `Controller` without the
 need to declare aliases.
 
-```
+<div class='badcode'></div>
+
+```ts
 // Bad: overlong import statement of needlessly namespaced names.
 import {Item as TableviewItem, Header as TableviewHeader, Row as TableviewRow,
   Model as TableviewModel, Renderer as TableviewRenderer} from './tableview';
@@ -343,14 +264,18 @@ import {Item as TableviewItem, Header as TableviewHeader, Row as TableviewRow,
 let item: TableviewItem|undefined;
 ```
 
-```
+<div class='goodcode'></div>
+
+```ts
 // Better: use the module for namespacing.
 import * as tableview from './tableview';
 
 let item: tableview.Item|undefined;
 ```
 
-```
+<div class='badcode'></div>
+
+```ts
 import * as testing from './testing';
 
 // Bad: The module name does not improve readability.
@@ -362,7 +287,9 @@ testing.describe('foo', () => {
 });
 ```
 
-```
+<div class='goodcode'></div>
+
+```ts
 // Better: give local names for these common functions.
 import {describe, it, expect} from './testing';
 
@@ -373,6 +300,10 @@ describe('foo', () => {
   });
 });
 ```
+
+<div class="numbered"></div>
+
+<a id="jspb-import-by-path"></a>
 
 ##### Special case: Apps JSPB protos
 
@@ -385,12 +316,18 @@ By leveraging destructured imports the build system can create finer grained
 dependencies on Apps JSPB messages while preserving the ergonomics of path based
 imports.
 
-```
+<div class='goodcode'></div>
+
+```ts
 // Good: import the exact set of symbols you need from the proto file.
 import {Foo, Bar} from './foo.proto';
 
 function copyFooBar(foo: Foo, bar: Bar) {...}
 ```
+
+<div class="numbered"></div>
+
+<a id="renaming-imports"></a>
 
 #### Renaming imports
 
@@ -400,17 +337,23 @@ exports themselves. Code *may* rename imports
 
 Three examples where renaming can be helpful:
 
-1. If it’s necessary to avoid collisions with other imported symbols.
-2. If the imported symbol name is generated.
-3. If importing symbols whose names are unclear by themselves, renaming can
-   improve code clarity. For example, when using RxJS the `from` function might
-   be more readable when renamed to `observableFrom`.
+1.  If it's necessary to avoid collisions with other imported symbols.
+2.  If the imported symbol name is generated.
+3.  If importing symbols whose names are unclear by themselves, renaming can
+    improve code clarity. For example, when using RxJS the `from` function might
+    be more readable when renamed to `observableFrom`.
+
+<div class="numbered"></div>
+
+<a id="exports"></a>
 
 ### Exports
 
 Use named exports in all code:
 
-```
+<div class='goodcode'></div>
+
+```ts
 // Use named exports:
 export class Foo { ... }
 ```
@@ -418,7 +361,9 @@ export class Foo { ... }
 Do not use default exports. This ensures that all imports follow a uniform
 pattern.
 
-```
+<div class='badcode'></div>
+
+```ts
 // Do not use default exports:
 export default class Foo { ... } // BAD!
 ```
@@ -429,29 +374,37 @@ Default exports provide no canonical name, which makes central maintenance
 difficult with relatively little benefit to code owners, including potentially
 decreased readability:
 
-```
+<div class='badcode'></div>
+
+```ts
 import Foo from './bar';  // Legal.
 import Bar from './bar';  // Also legal.
 ```
 
 Named exports have the benefit of erroring when import statements try to import
-something that hasn’t been declared. In `foo.ts`:
+something that hasn't been declared. In `foo.ts`:
 
-```
+<div class='badcode'></div>
+
+```ts
 const foo = 'blah';
 export default foo;
 ```
 
 And in `bar.ts`:
 
-```
+<div class='badcode'></div>
+
+```ts
 import {fizz} from './foo';
 ```
 
 Results in `error TS2614: Module '"./foo"' has no exported member 'fizz'.` While
 `bar.ts`:
 
-```
+<div class='badcode'></div>
+
+```ts
 import fizz from './foo';
 ```
 
@@ -460,7 +413,9 @@ Results in `fizz === foo`, which is probably unexpected and difficult to debug.
 Additionally, default exports encourage people to put everything into one big
 object to namespace it all together:
 
-```
+<div class='badcode'></div>
+
+```ts
 export default class Foo {
   static SOME_CONSTANT = ...
   static someHelpfulFunction() { ... }
@@ -474,7 +429,9 @@ ambiguously used as both a type and a value in other files.
 
 Instead, prefer use of file scope for namespacing, as well as named exports:
 
-```
+<div class='goodcode'></div>
+
+```ts
 export const SOME_CONSTANT = ...
 export function someHelpfulFunction()
 export class Foo {
@@ -482,11 +439,19 @@ export class Foo {
 }
 ```
 
+<div class="numbered"></div>
+
+<a id="export-visibility"></a>
+
 #### Export visibility
 
 TypeScript does not support restricting the visibility for exported symbols.
 Only export symbols that are used outside of the module. Generally minimize the
 exported API surface of modules.
+
+<div class="numbered"></div>
+
+<a id="mutable-exports"></a>
 
 #### Mutable exports
 
@@ -494,7 +459,9 @@ Regardless of technical support, mutable exports can create hard to understand
 and debug code, in particular with re-exports across multiple modules. One way
 to paraphrase this style point is that `export let` is not allowed.
 
-```
+<div class='badcode'></div>
+
+```ts
 export let foo = 3;
 // In pure ES6, foo is mutable and importers will observe the value change after a second.
 // In TS, if foo is re-exported by a second file, importers will not see the value change.
@@ -506,7 +473,9 @@ window.setTimeout(() => {
 If one needs to support externally accessible and mutable bindings, they
 *should* instead use explicit getter functions.
 
-```
+<div class='goodcode'></div>
+
+```ts
 let foo = 3;
 window.setTimeout(() => {
   foo = 4;
@@ -517,9 +486,11 @@ export function getFoo() { return foo; };
 
 For the common pattern of conditionally exporting either of two values, first do
 the conditional check, then the export. Make sure that all exports are final
-after the module’s body has executed.
+after the module's body has executed.
 
-```
+<div class='goodcode'></div>
+
+```ts
 function pickApi() {
   if (useOtherApi()) return OtherApi;
   return RegularApi;
@@ -527,12 +498,20 @@ function pickApi() {
 export const SomeApi = pickApi();
 ```
 
+<a id="static-containers"></a>
+
+<div class="numbered"></div>
+
+<a id="container-classes"></a>
+
 #### Container classes
 
 Do not create container classes with static methods or properties for the sake
 of namespacing.
 
-```
+<div class='badcode'></div>
+
+```ts
 export class Container {
   static FOO = 1;
   static bar() { return 1; }
@@ -541,19 +520,31 @@ export class Container {
 
 Instead, export individual constants and functions:
 
-```
+<div class='goodcode'></div>
+
+```ts
 export const FOO = 1;
 export function bar() { return 1; }
 ```
 
+<div class="numbered"></div>
+
+<a id="import-export-type"></a>
+
 ### Import and export type
+
+<div class="numbered"></div>
+
+<a id="import-type"></a>
 
 #### Import type
 
 You may use `import type {...}` when you use the imported symbol only as a type.
 Use regular imports for values:
 
-```
+<div class='goodcode'></div>
+
+```ts
 import type {Foo} from './foo';
 import {Bar} from './foo';
 
@@ -567,20 +558,26 @@ insert runtime loads for type references. So why annotate type imports?
 
 The TypeScript compiler can run in 2 modes:
 
-* In development mode, we typically want quick iteration loops. The compiler
-  transpiles to JavaScript without full type information. This is much faster,
-  but requires `import type` in certain cases.
-* In production mode, we want correctness. The compiler type checks everything
-  and ensures `import type` is used correctly.
+-   In development mode, we typically want quick iteration loops. The compiler
+    transpiles to JavaScript without full type information. This is much faster,
+    but requires `import type` in certain cases.
+-   In production mode, we want correctness. The compiler type checks everything
+    and ensures `import type` is used correctly.
 
 Note: If you need to force a runtime load for side effects, use `import '...';`.
 See [the imports](#imports).
+
+<div class="numbered"></div>
+
+<a id="export-type"></a>
 
 #### Export type
 
 Use `export type` when re-exporting a type, e.g.:
 
-```
+<div class='goodcode'></div>
+
+```ts
 export type {AnInterface} from './foo';
 ```
 
@@ -597,20 +594,34 @@ vs value usages of an API is to actually split the symbols into e.g.
 `UserService` and `AjaxUserService`. This is less error prone and also better
 communicates intent.
 
+<div class="numbered"></div>
+
+<a id="dynamic-import-type"></a>
+
 #### Dynamic `import()` type
 
 Do not use the `import()` function inside type annotations.
 
-```
+<div class='badcode'></div>
+
+```ts
 let f: import('./foo').Foo;
 ```
 
 If you need to ensure that the import is always elided from the generated
 JavaScript, use `import type` instead.
 
-```
+<div class='goodcode'></div>
+
+```ts
 import type {Foo} from './foo';
 ```
+
+<a id="namespaces-vs-modules"></a>
+
+<div class="numbered"></div>
+
+<a id="use-modules-not-namespaces"></a>
 
 #### Use modules not namespaces
 
@@ -625,7 +636,9 @@ To semantically namespace your code, use separate files.
 Code *must not* use `require` (as in `import x = require('...');`) for imports.
 Use ES6 module syntax.
 
-```
+<div class='badcode'></div>
+
+```ts
 // Bad: do not use namespaces:
 namespace Rocket {
   function launch() { ... }
@@ -639,8 +652,14 @@ import x = require('mydep');
 ```
 
 > NB: TypeScript `namespace`s used to be called internal modules and used to use
-> the `module` keyword in the form `module Foo { ... }`. Don’t use that either.
+> the `module` keyword in the form `module Foo { ... }`. Don't use that either.
 > Always use ES6 imports.
+
+<a id="language-rules"></a>
+
+<div class="numbered"></div>
+
+<a id="language-features"></a>
 
 ## Language features
 
@@ -650,49 +669,95 @@ additional constraints on their use.
 Language features which are not discussed in this style guide *may* be used with
 no recommendations of their usage.
 
+<a id="features-local-variable-declarations"></a>
+
+<div class="numbered"></div>
+
+<a id="local-variable-declarations"></a>
+
 ### Local variable declarations
+
+<a id="variables"></a>
+<a id="features-use-const-and-let"></a>
+
+<div class="numbered"></div>
+
+<a id="use-const-and-let"></a>
 
 #### Use const and let
 
 Always use `const` or `let` to declare variables. Use `const` by default, unless
 a variable needs to be reassigned. Never use `var`.
 
-```
+<div class='goodcode'></div>
+
+```ts
 const foo = otherValue;  // Use if "foo" never changes.
 let bar = someValue;     // Use if "bar" is ever assigned into later on.
 ```
 
 `const` and `let` are block scoped, like variables in most other languages.
 `var` in JavaScript is function scoped, which can cause difficult to understand
-bugs. Don’t use it.
+bugs. Don't use it.
 
-```
+<div class='badcode'></div>
+
+```ts
 var foo = someValue;     // Don't use - var scoping is complex and causes bugs.
 ```
 
 Variables *must not* be used before their declaration.
 
+<a id="features-one-variable-per-declaration"></a>
+
+<div class="numbered"></div>
+
+<a id="one-variable-per-declaration"></a>
+
 #### One variable per declaration
 
 Every local variable declaration declares only one variable: declarations such
-as `let a = 1, b = 2;` are not used.
+as <code class="badcode">let a = 1, b = 2;</code> are not used.
+
+<a id="features-array-literals"></a>
+
+<div class="numbered"></div>
+
+<a id="array-literals"></a>
 
 ### Array literals
+
+<a id="features-arrays-ctor"></a>
+
+<div class="numbered"></div>
+
+<a id="array-constructor"></a>
 
 #### Do not use the `Array` constructor
 
 *Do not* use the `Array()` constructor, with or without `new`. It has confusing
 and contradictory usage:
 
-```
+<!--
+Silencing a CommonTypos warning for incorrect array constructor usage.
+common_typos_disable
+-->
+
+<div class='badcode'></div>
+
+```ts
 const a = new Array(2); // [undefined, undefined]
 const b = new Array(2, 3); // [2, 3];
 ```
 
+<!-- common_typos_enable -->
+
 Instead, always use bracket notation to initialize arrays, or `from` to
 initialize an `Array` with a certain size:
 
-```
+<div class='goodcode'></div>
+
+```ts
 const a = [2];
 const b = [2, 3];
 
@@ -704,19 +769,33 @@ c.length = 2;
 Array.from<number>({length: 5}).fill(0);
 ```
 
+<a id="features-arrays-non-numeric-properties"></a>
+
+<div class="numbered"></div>
+
+<a id="do-not-define-properties-on-arrays"></a>
+
 #### Do not define properties on arrays
 
 Do not define or use non-numeric properties on an array (other than `length`).
 Use a `Map` (or `Object`) instead.
 
+<a id="features-arrays-destructuring"></a>
+
+<div class="numbered"></div>
+
+<a id="array-destructuring"></a>
+
 #### Array destructuring
 
 Array literals may be used on the left-hand side of an assignment to perform
 destructuring (such as when unpacking multiple values from a single array or
-iterable). A final “rest” element may be included (with no space between the
+iterable). A final "rest" element may be included (with no space between the
 `...` and the variable name). Elements should be omitted if they are unused.
 
-```
+<div class='goodcode'></div>
+
+```ts
 const [a, b, c, ...rest] = generateResults();
 let [, b,, d] = someArray;
 ```
@@ -725,13 +804,17 @@ Destructuring may also be used for function parameters. Always specify `[]` as
 the default value if a destructured array parameter is optional, and provide
 default values on the left hand side:
 
-```
+<div class='goodcode'></div>
+
+```ts
 function destructured([a = 4, b = 2] = []) { … }
 ```
 
 Disallowed:
 
-```
+<div class='badcode'></div>
+
+```ts
 function badDestructuring([a, b] = [4, 2]) { … }
 ```
 
@@ -739,12 +822,28 @@ Tip: For (un)packing multiple values into a function’s parameter or return,
 prefer object destructuring to array destructuring when possible, as it allows
 naming the individual elements and specifying a different type for each.
 
+<a id="features-object-literals"></a>
+
+<div class="numbered"></div>
+
+<a id="object-literals"></a>
+
 ### Object literals
+
+<a id="features-objects-ctor"></a>
+
+<div class="numbered"></div>
+
+<a id="object-constructor"></a>
 
 #### Do not use the `Object` constructor
 
 The `Object` constructor is disallowed. Use an object literal (`{}` or
 `{a: 0, b: 1, c: 2}`) instead.
+
+<div class="numbered"></div>
+
+<a id="iterating-objects"></a>
 
 #### Iterating objects
 
@@ -753,7 +852,9 @@ enumerable properties from the prototype chain.
 
 Do not use unfiltered `for (... in ...)` statements:
 
-```
+<div class='badcode'></div>
+
+```ts
 for (const x in someObj) {
   // x could come from some parent prototype!
 }
@@ -762,7 +863,9 @@ for (const x in someObj) {
 Either filter values explicitly with an `if` statement, or use
 `for (... of Object.keys(...))`.
 
-```
+<div class='goodcode'></div>
+
+```ts
 for (const x in someObj) {
   if (!someObj.hasOwnProperty(x)) continue;
   // now x was definitely defined on someObj
@@ -775,13 +878,21 @@ for (const [key, value] of Object.entries(someObj)) { // note: for _of_!
 }
 ```
 
+<a id="using-the-spread-operator"></a>
+
+<div class="numbered"></div>
+
+<a id="object-spread-syntax"></a>
+
 #### Using spread syntax
 
 Using spread syntax `{...bar}` is a convenient shorthand for creating a shallow
 copy of an object. When using spread syntax in object initialization, later
 values replace earlier values at the same key.
 
-```
+<div class='goodcode'></div>
+
+```ts
 const foo = {
   num: 1,
 };
@@ -804,16 +915,26 @@ Avoid spreading objects that have prototypes other than the Object prototype
 (e.g. class definitions, class instances, functions) as the behavior is
 unintuitive (only enumerable non-prototype properties are shallow-copied).
 
-```
+<div class='badcode'></div>
+
+```ts
 // Creates {0: 'a', 1: 'b', 2: 'c'} but has no length
 const fooStrings = ['a', 'b', 'c'];
 const ids = {...fooStrings};
 ```
 
-```
+<div class='goodcode'></div>
+
+```ts
 const options = {foo: 1, bar: 2};
 const extended = {...options, baz: 3};
 ```
+
+<a id="features-objects-computed-property-names"></a>
+
+<div class="numbered"></div>
+
+<a id="computed-property-names"></a>
 
 #### Computed property names
 
@@ -822,6 +943,12 @@ considered dict-style (quoted) keys (i.e., must not be mixed with non-quoted
 keys) unless the computed property is a
 [symbol](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol)
 (e.g. `[Symbol.iterator]`).
+
+<a id="features-objects-destructuring"></a>
+
+<div class="numbered"></div>
+
+<a id="object-destructuring"></a>
 
 #### Object destructuring
 
@@ -833,12 +960,14 @@ as simple as possible: a single level of unquoted shorthand properties. Deeper
 levels of nesting and computed properties may not be used in parameter
 destructuring. Specify any default values in the left-hand-side of the
 destructured parameter (`{str = 'some default'} = {}`, rather than
-`{str} = {str: 'some default'}`), and if a
+<code class="badcode">{str} = {str: 'some default'}</code>), and if a
 destructured object is itself optional, it must default to `{}`.
 
 Example:
 
-```
+<div class='goodcode'></div>
+
+```ts
 interface Options {
   /** The number of times to do something. */
   num?: number;
@@ -852,23 +981,40 @@ function destructured({num, str = 'default'}: Options = {}) {}
 
 Disallowed:
 
-```
+<div class='badcode'></div>
+
+```ts
 function nestedTooDeeply({x: {num, str}}: {x: Options}) {}
 function nontrivialDefault({num, str}: Options = {num: 42, str: 'default'}) {}
 ```
 
+<a id="formatting-class-literals"></a>
+<a id="features-classes"></a>
+
+<div class="numbered"></div>
+
+<a id="classes"></a>
+
 ### Classes
+
+<div class="numbered"></div>
+
+<a id="class-declarations"></a>
 
 #### Class declarations
 
 Class declarations *must not* be terminated with semicolons:
 
-```
+<div class='goodcode'></div>
+
+```ts
 class Foo {
 }
 ```
 
-```
+<div class='badcode'></div>
+
+```ts
 class Foo {
 }; // Unnecessary semicolon
 ```
@@ -876,7 +1022,9 @@ class Foo {
 In contrast, statements that contain class expressions *must* be terminated with
 a semicolon:
 
-```
+<div class='goodcode'></div>
+
+```ts
 export const Baz = class extends Bar {
   method(): number {
     return this.x;
@@ -884,7 +1032,9 @@ export const Baz = class extends Bar {
 }; // Semicolon here as this is a statement, not a declaration
 ```
 
-```
+<div class='badcode'></div>
+
+```ts
 exports const Baz = class extends Bar {
   method(): number {
     return this.x;
@@ -895,7 +1045,9 @@ exports const Baz = class extends Bar {
 It is neither encouraged nor discouraged to have blank lines separating class
 declaration braces from other class content:
 
-```
+<div class='goodcode'></div>
+
+```ts
 // No spaces around braces - fine.
 class Baz {
   method(): number {
@@ -913,7 +1065,11 @@ class Foo {
 }
 ```
 
-#### Don’t create member variables only used in constructors
+<div class="numbered"></div>
+
+<a id="no-ctor-only-members"></a>
+
+#### Don't create member variables only used in constructors
 
 If a variable is only used in the constructor, then it can be migrated to be a
 variable scoped to the constructor body, which will make your class more
@@ -924,7 +1080,9 @@ update bits of class state that are only used during class construction. For the
 same reasons as above, these bits of class state should also be migrated to be
 constructor-local variables.
 
-```
+<div class='badcode'></div>
+
+```ts
 class MyClass {
   // BAD: onlyUsedInCtor is only used in the constructor and nowhere else after
   // class initialization.
@@ -948,7 +1106,9 @@ class MyClass {
 }
 ```
 
-```
+<div class='goodcode'></div>
+
+```ts
 class MyClass {
   private readonly otherDataStructure = ...;
   constructor(
@@ -965,12 +1125,18 @@ class MyClass {
 }
 ```
 
+<div class="numbered"></div>
+
+<a id="class-method-declarations"></a>
+
 #### Class method declarations
 
 Class method declarations *must not* use a semicolon to separate individual
 method declarations:
 
-```
+<div class='goodcode'></div>
+
+```ts
 class Foo {
   doThing() {
     console.log("A");
@@ -978,7 +1144,9 @@ class Foo {
 }
 ```
 
-```
+<div class='badcode'></div>
+
+```ts
 class Foo {
   doThing() {
     console.log("A");
@@ -989,7 +1157,9 @@ class Foo {
 Method declarations should be separated from surrounding code by a single blank
 line:
 
-```
+<div class='goodcode'></div>
+
+```ts
 class Foo {
   doThing() {
     console.log("A");
@@ -1001,7 +1171,9 @@ class Foo {
 }
 ```
 
-```
+<div class='badcode'></div>
+
+```ts
 class Foo {
   doThing() {
     console.log("A");
@@ -1011,6 +1183,12 @@ class Foo {
   }
 }
 ```
+
+<a id="features-classes-overriding-tostring"></a>
+
+<div class="numbered"></div>
+
+<a id="overriding-tostring"></a>
 
 ##### Overriding toString
 
@@ -1020,12 +1198,26 @@ visible side effects.
 Tip: Beware, in particular, of calling other methods from toString, since
 exceptional conditions could lead to infinite loops.
 
+<a id="features-classes-static-methods"></a>
+
+<div class="numbered"></div>
+
+<a id="static-methods"></a>
+
 #### Static methods
+
+<div class="numbered"></div>
+
+<a id="avoid-private-static-methods"></a>
 
 ##### Avoid private static methods
 
 Where it does not interfere with readability, prefer module-local functions over
 private static methods.
+
+<div class="numbered"></div>
+
+<a id="avoid-static-method-dynamic-dispatch"></a>
 
 ##### Do not rely on dynamic dispatch
 
@@ -1038,7 +1230,9 @@ on a subclass that doesn’t define the method itself.
 
 Disallowed:
 
-```
+<div class='badcode'></div>
+
+```ts
 // Context for the examples below (this class is okay by itself)
 class Base {
   /** @nocollapse */ static foo() {}
@@ -1062,6 +1256,10 @@ class MyClass {
 MyClass.staticField = 1;
 ```
 
+<div class="numbered"></div>
+
+<a id="static-this"></a>
+
 ##### Avoid static `this` references
 
 Code *must not* use `this` in a static context.
@@ -1069,7 +1267,9 @@ Code *must not* use `this` in a static context.
 JavaScript allows accessing static fields through `this`. Different from other
 languages, static fields are also inherited.
 
-```
+<div class='badcode'></div>
+
+```ts
 class ShoeStore {
   static storage: Storage = ...;
 
@@ -1093,22 +1293,35 @@ they can be overridden - this feature is not commonly used.
 This code also encourages an anti-pattern of having substantial static state,
 which causes problems with testability.
 
+<a id="disallowed-features-omitting-parents-with-new"></a>
+<a id="features-classes-constructors"></a>
+
+<div class="numbered"></div>
+
+<a id="constructors"></a>
+
 #### Constructors
 
 Constructor calls *must* use parentheses, even when no arguments are passed:
 
-```
+<div class='badcode'></div>
+
+```ts
 const x = new Foo;
 ```
 
-```
+<div class='goodcode'></div>
+
+```ts
 const x = new Foo();
 ```
 
 Omitting parentheses can lead to subtle mistakes. These two lines are not
 equivalent:
 
-```
+<div class='goodcode'></div>
+
+```js
 new Foo().Bar();
 new Foo.Bar();
 ```
@@ -1119,13 +1332,17 @@ is not specified. However constructors with parameter properties, visibility
 modifiers or parameter decorators *should not* be omitted even if the body of
 the constructor is empty.
 
-```
+<div class='badcode'></div>
+
+```ts
 class UnnecessaryConstructor {
   constructor() {}
 }
 ```
 
-```
+<div class='badcode'></div>
+
+```ts
 class UnnecessaryConstructorOverride extends Base {
     constructor(value: number) {
       super(value);
@@ -1133,7 +1350,9 @@ class UnnecessaryConstructorOverride extends Base {
 }
 ```
 
-```
+<div class='goodcode'></div>
+
+```ts
 class DefaultConstructor {
 }
 
@@ -1153,7 +1372,9 @@ class NoInstantiation {
 The constructor should be separated from surrounding code both above and below
 by a single blank line:
 
-```
+<div class='goodcode'></div>
+
+```ts
 class Foo {
   myField = 10;
 
@@ -1165,7 +1386,9 @@ class Foo {
 }
 ```
 
-```
+<div class='badcode'></div>
+
+```ts
 class Foo {
   myField = 10;
   constructor(private readonly ctorParam) {}
@@ -1174,22 +1397,34 @@ class Foo {
   }
 }
 ```
+
+<div class="numbered"></div>
+
+<a id="class-members"></a>
 
 #### Class members
+
+<div class="numbered"></div>
+
+<a id="private-fields"></a>
 
 ##### No #private fields
 
 Do not use private fields (also known as private identifiers):
 
-```
+<div class='badcode'></div>
+
+```ts
 class Clazz {
   #ident = 1;
 }
 ```
 
-Instead, use TypeScript’s visibility annotations:
+Instead, use TypeScript's visibility annotations:
 
-```
+<div class='goodcode'></div>
+
+```ts
 class Clazz {
   private ident = 1;
 }
@@ -1202,10 +1437,18 @@ down-leveled by TypeScript, and are unsupported before ES2015. They can only be
 downleveled to ES2015, not lower. At the same time, they do not offer
 substantial benefits when static type checking is used to enforce visibility.
 
+<div class="numbered"></div>
+
+<a id="use-readonly"></a>
+
 ##### Use readonly
 
 Mark properties that are never reassigned outside of the constructor with the
 `readonly` modifier (these need not be deeply immutable).
+
+<div class="numbered"></div>
+
+<a id="parameter-properties"></a>
 
 ##### Parameter properties
 
@@ -1213,7 +1456,9 @@ Rather than plumbing an obvious initializer through to a class member, use a
 TypeScript
 [parameter property](https://www.typescriptlang.org/docs/handbook/2/classes.html#parameter-properties).
 
-```
+<div class='badcode'></div>
+
+```ts
 class Foo {
   private readonly barService: BarService;
 
@@ -1223,7 +1468,9 @@ class Foo {
 }
 ```
 
-```
+<div class='goodcode'></div>
+
+```ts
 class Foo {
   constructor(private readonly barService: BarService) {}
 }
@@ -1232,13 +1479,19 @@ class Foo {
 If the parameter property needs documentation,
 [use an `@param` JSDoc tag](#parameter-property-comments).
 
+<div class="numbered"></div>
+
+<a id="field-initializers"></a>
+
 ##### Field initializers
 
 If initializing a class member does not rely on a constructor parameter or a
-parameter property, initialize it where it’s declared. This sometimes lets you
+parameter property, initialize it where it's declared. This sometimes lets you
 drop the constructor entirely.
 
-```
+<div class='badcode'></div>
+
+```ts
 class Foo {
   private readonly userList: string[];
 
@@ -1248,7 +1501,9 @@ class Foo {
 }
 ```
 
-```
+<div class='goodcode'></div>
+
+```ts
 class Foo {
   private readonly userList: string[] = [];
 }
@@ -1260,7 +1515,9 @@ changing to match JavaScript language semantics, and referencing a parameter
 property from a field initializer will become a TypeScript compiler error, so
 this pattern should be avoided.
 
-```
+<div class='badcode'></div>
+
+```ts
 class Foo {
   // BAD: references a property (`this.state`) that will be
   // initialized after this field.
@@ -1270,7 +1527,9 @@ class Foo {
 }
 ```
 
-```
+<div class='goodcode'></div>
+
+```ts
 class Foo {
   // GOOD: this must be initialized in the constructor
   private readonly userList: string[];
@@ -1285,8 +1544,12 @@ class Foo {
 
 Tip: Properties should never be added to or removed from an instance after the
 constructor is finished, since it significantly hinders VMs’ ability to optimize
-classes’ “shape”. Optional fields that may be filled in later should be
+classes' "shape". Optional fields that may be filled in later should be
 explicitly initialized to `undefined` to prevent later shape changes.
+
+<div class="numbered"></div>
+
+<a id="properties-used-outside-of-class-lexical-scope"></a>
 
 ##### Properties used outside of class lexical scope
 
@@ -1314,6 +1577,12 @@ Though it might appear that `obj['foo']` can bypass visibility in the TypeScript
 compiler, this pattern can be broken by rearranging the build rules, and also
 violates [optimization compatibility](#optimization-compatibility).
 
+<a id="features-classes-getters-and-setters"></a>
+
+<div class="numbered"></div>
+
+<a id="classes-getters-and-setters"></a>
+
 ##### Getters and setters
 
 Getters and setters, also known as accessors, for class members *may* be used.
@@ -1323,7 +1592,9 @@ consistent and has no side effects: getters *must not* change observable state).
 They are also useful as a means of restricting the visibility of internal or
 verbose implementation details (shown below).
 
-```
+<div class='goodcode'></div>
+
+```ts
 class Foo {
   constructor(private readonly someService: SomeService) {}
 
@@ -1337,7 +1608,9 @@ class Foo {
 }
 ```
 
-```
+<div class='badcode'></div>
+
+```ts
 class Foo {
   nextId = 0;
   get next() {
@@ -1350,11 +1623,13 @@ If an accessor is used to hide a class property, the hidden property *may* be
 prefixed or suffixed with any whole word, like `internal` or `wrapped`. When
 using these private properties, access the value through the accessor whenever
 possible. At least one accessor for a property *must* be non-trivial: do not
-define “pass-through” accessors only for the purpose of hiding a property.
+define "pass-through" accessors only for the purpose of hiding a property.
 Instead, make the property public (or consider making it `readonly` rather than
 just defining a getter with no setter).
 
-```
+<div class='goodcode'></div>
+
+```ts
 class Foo {
   private wrappedBar = '';
   get bar() {
@@ -1367,7 +1642,9 @@ class Foo {
 }
 ```
 
-```
+<div class='badcode'></div>
+
+```ts
 class Bar {
   private barInternal = '';
   // Neither of these accessors have logic, so just make bar public.
@@ -1384,33 +1661,43 @@ class Bar {
 Getters and setters *must not* be defined using `Object.defineProperty`, since
 this interferes with property renaming.
 
+<a id="features-classes-computed-properties"></a>
+
+<div class="numbered"></div>
+
+<a id="class-computed-properties"></a>
+
 ##### Computed properties
 
 Computed properties may only be used in classes when the property is a symbol.
 Dict-style properties (that is, quoted or computed non-symbol keys) are not
-allowed (see
-[rationale for not mixing key types](#features-objects-mixing-keys)). A
-`[Symbol.iterator]` method should be defined for any classes that are logically
-iterable. Beyond this, `Symbol` should be used sparingly.
+allowed. A `[Symbol.iterator]` method should be defined for any classes that are
+logically iterable. Beyond this, `Symbol` should be used sparingly.
 
 Tip: be careful of using any other built-in symbols (e.g.
 `Symbol.isConcatSpreadable`) as they are not polyfilled by the compiler and will
 therefore not work in older browsers.
+
+<div class="numbered"></div>
+
+<a id="visibility"></a>
 
 #### Visibility
 
 Restricting visibility of properties, methods, and entire types helps with
 keeping code decoupled.
 
-* Limit symbol visibility as much as possible.
-* Consider converting private methods to non-exported functions within the
-  same file but outside of any class, and moving private properties into a
-  separate, non-exported class.
-* TypeScript symbols are public by default. Never use the `public` modifier
-  except when declaring non-readonly public parameter properties (in
-  constructors).
+*   Limit symbol visibility as much as possible.
+*   Consider converting private methods to non-exported functions within the
+    same file but outside of any class, and moving private properties into a
+    separate, non-exported class.
+*   TypeScript symbols are public by default. Never use the `public` modifier
+    except when declaring non-readonly public parameter properties (in
+    constructors).
 
-```
+<div class='badcode'></div>
+
+```ts
 class Foo {
   public bar = new Bar();  // BAD: public modifier not needed
 
@@ -1418,7 +1705,9 @@ class Foo {
 }
 ```
 
-```
+<div class='goodcode'></div>
+
+```ts
 class Foo {
   bar = new Bar();  // GOOD: public modifier not needed
 
@@ -1428,7 +1717,17 @@ class Foo {
 
 See also [export visibility](#export-visibility).
 
+<div class="numbered"></div>
+
+<a id="disallowed-class-patterns"></a>
+
 #### Disallowed class patterns
+
+<a id="features-classes-prototypes"></a>
+
+<div class="numbered"></div>
+
+<a id="class-prototypes"></a>
 
 ##### Do not manipulate `prototype`s directly
 
@@ -1440,7 +1739,17 @@ objects are explicitly forbidden.
 **Exception**: Framework code (such as Polymer, or Angular) may need to use
 `prototype`s, and should not resort to even-worse workarounds to avoid doing so.
 
+<a id="features-functions"></a>
+
+<div class="numbered"></div>
+
+<a id="functions"></a>
+
 ### Functions
+
+<div class="numbered"></div>
+
+<a id="terminology"></a>
 
 #### Terminology
 
@@ -1448,35 +1757,45 @@ There are many different types of functions, with subtle distinctions between
 them. This guide uses the following terminology, which aligns with
 [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Functions):
 
-* “function declaration”: a declaration (i.e. not an expression) using the
-  `function` keyword
-* “function expression”: an expression, typically used in an assignment or
-  passed as a parameter, using the `function` keyword
-* “arrow function”: an expression using the `=>` syntax
-* “block body”: right hand side of an arrow function with braces
-* “concise body”: right hand side of an arrow function without braces
+*   "function declaration": a declaration (i.e. not an expression) using the
+    `function` keyword
+*   "function expression": an expression, typically used in an assignment or
+    passed as a parameter, using the `function` keyword
+*   "arrow function": an expression using the `=>` syntax
+*   "block body": right hand side of an arrow function with braces
+*   "concise body": right hand side of an arrow function without braces
 
 Methods and classes/constructors are not covered in this section.
+
+<div class="numbered"></div>
+
+<a id="function-declarations"></a>
 
 #### Prefer function declarations for named functions
 
 Prefer function declarations over arrow functions or function expressions when
 defining named functions.
 
-```
+<div class='goodcode'></div>
+
+```ts
 function foo() {
   return 42;
 }
 ```
 
-```
+<div class='badcode'></div>
+
+```ts
 const foo = () => 42;
 ```
 
 Arrow functions *may* be used, for example, when an explicit type annotation is
 required.
 
-```
+<div class='goodcode'></div>
+
+```ts
 interface SearchFunction {
   (source: string, subString: string): boolean;
 }
@@ -1484,21 +1803,37 @@ interface SearchFunction {
 const fooSearch: SearchFunction = (source, subString) => { ... };
 ```
 
+<a id="features-functions-nested-functions"></a>
+
+<div class="numbered"></div>
+
+<a id="nested-functions"></a>
+
 #### Nested functions
 
 Functions nested within other methods or functions *may* use function
 declarations or arrow functions, as appropriate. In method bodies in particular,
 arrow functions are preferred because they have access to the outer `this`.
 
+<a id="use-arrow-functions-in-expressions"></a>
+
+<div class="numbered"></div>
+
+<a id="function-expressions"></a>
+
 #### Do not use function expressions
 
 Do not use function expressions. Use arrow functions instead.
 
-```
+<div class='goodcode'></div>
+
+```ts
 bar(() => { this.doSomething(); })
 ```
 
-```
+<div class='badcode'></div>
+
+```ts
 bar(function() { ... })
 ```
 
@@ -1506,12 +1841,21 @@ bar(function() { ... })
 dynamically rebind `this` (but this is [discouraged](#rebinding-this)), or for
 generator functions (which do not have an arrow syntax).
 
+<a id="features-functions-arrow-functions"></a>
+<a id="expression-bodies-vs-block-bodies"></a>
+
+<div class="numbered"></div>
+
+<a id="arrow-function-bodies"></a>
+
 #### Arrow function bodies
 
 Use arrow functions with concise bodies (i.e. expressions) or block bodies as
 appropriate.
 
-```
+<div class='goodcode'></div>
+
+```ts
 // Top level functions use function declarations.
 function someFunction() {
   // Block bodies are fine:
@@ -1538,7 +1882,9 @@ Only use a concise body if the return value of the function is actually used.
 The block body makes sure the return type is `void` then and prevents potential
 side effects.
 
-```
+<div class='badcode'></div>
+
+```ts
 // BAD: use a block body if the return value of the function is not used.
 myPromise.then((v) => console.log(v));
 // BAD: this typechecks, but the return value still leaks.
@@ -1546,7 +1892,9 @@ let f: () => void;
 f = () => 1;
 ```
 
-```
+<div class='goodcode'></div>
+
+```ts
 // GOOD: return value is unused, use a block body.
 myPromise.then((v) => {
   console.log(v);
@@ -1564,13 +1912,19 @@ myPromise.then((v) => void console.log(v));
 Tip: The `void` operator can be used to ensure an arrow function with an
 expression body returns `undefined` when the result is unused.
 
+<div class="numbered"></div>
+
+<a id="rebinding-this"></a>
+
 #### Rebinding `this`
 
 Function expressions and function declarations *must not* use `this` unless they
 specifically exist to rebind the `this` pointer. Rebinding `this` can in most
 cases be avoided by using arrow functions or explicit parameters.
 
-```
+<div class='badcode'></div>
+
+```ts
 function clickHandler() {
   // Bad: what's `this` in this context?
   this.textContent = 'Hello';
@@ -1579,7 +1933,9 @@ function clickHandler() {
 document.body.onclick = clickHandler;
 ```
 
-```
+<div class='goodcode'></div>
+
+```ts
 // Good: explicitly reference the object from an arrow function.
 document.body.onclick = () => { document.body.textContent = 'hello'; };
 // Alternatively: take an explicit parameter
@@ -1590,16 +1946,22 @@ document.body.onclick = setTextFn.bind(null, document.body);
 Prefer arrow functions over other approaches to binding `this`, such as
 `f.bind(this)`, `goog.bind(f, this)`, or `const self = this`.
 
+<div class="numbered"></div>
+
+<a id="functions-as-callbacks"></a>
+
 #### Prefer passing arrow functions as callbacks
 
 Callbacks can be invoked with unexpected arguments that can pass a type check
 but still result in logical errors.
 
 Avoid passing a named callback to a higher-order function, unless you are sure
-of the stability of both functions’ call signatures. Beware, in particular, of
+of the stability of both functions' call signatures. Beware, in particular, of
 less-commonly-used optional parameters.
 
-```
+<div class='badcode'></div>
+
+```ts
 // BAD: Arguments are not explicitly passed, leading to unintended behavior
 // when the optional `decimals` argument gets the array indices 0, 1, and 2.
 const strs = [1.23, 4.56, 7.89].map(googFormat.numericValueToString);
@@ -1609,7 +1971,9 @@ const strs = [1.23, 4.56, 7.89].map(googFormat.numericValueToString);
 Instead, prefer passing an arrow-function that explicitly forwards parameters to
 the named callback.
 
-```
+<div class='goodcode'></div>
+
+```ts
 // GOOD: Arguments are explicitly passed to the callback
 const strs = [1.23, 4.56, 7.89].map((n) => googFormat.numericValueToString(n));
 // > ['1.23', '4.56', '7.89']
@@ -1622,11 +1986,15 @@ function dayFilter(element: string|null|undefined) {
 const days = ['tuesday', undefined, 'juice', 'wednesday'].filter(dayFilter);
 ```
 
+<div class="numbered"></div>
+
+<a id="arrow-functions-as-properties"></a>
+
 #### Arrow functions as properties
 
 Classes usually *should not* contain properties initialized to arrow functions.
 Arrow function properties require the calling function to understand that the
-callee’s `this` is already bound, which increases confusion about what `this`
+callee's `this` is already bound, which increases confusion about what `this`
 is, and call sites and references using such handlers look broken (i.e. require
 non-local knowledge to determine that they are correct). Code *should* always
 use arrow functions to call instance methods
@@ -1639,7 +2007,9 @@ pass references to instance methods
 > Use judgement with this rule. Also, see the
 > [`Event Handlers`](#event-handlers) section below.
 
-```
+<div class='badcode'></div>
+
+```ts
 class DelayHandler {
   constructor() {
     // Problem: `this` is not preserved in the callback. `this` in the callback
@@ -1652,7 +2022,9 @@ class DelayHandler {
 }
 ```
 
-```
+<div class='badcode'></div>
+
+```ts
 // Arrow functions usually should not be properties.
 class DelayHandler {
   constructor() {
@@ -1665,7 +2037,9 @@ class DelayHandler {
 }
 ```
 
-```
+<div class='goodcode'></div>
+
+```ts
 // Explicitly manage `this` at call time.
 class DelayHandler {
   constructor() {
@@ -1680,6 +2054,10 @@ class DelayHandler {
 }
 ```
 
+<div class="numbered"></div>
+
+<a id="event-handlers"></a>
+
 #### Event handlers
 
 Event handlers *may* use arrow functions when there is no need to uninstall the
@@ -1688,7 +2066,9 @@ handler requires uninstallation, arrow function properties are the right
 approach, because they automatically capture `this` and provide a stable
 reference to uninstall.
 
-```
+<div class='goodcode'></div>
+
+```ts
 // Event handlers may be anonymous functions or arrow function properties.
 class Component {
   onAttached() {
@@ -1712,9 +2092,11 @@ class Component {
 ```
 
 Do not use `bind` in the expression that installs an event handler, because it
-creates a temporary reference that can’t be uninstalled.
+creates a temporary reference that can't be uninstalled.
 
-```
+<div class='badcode'></div>
+
+```ts
 // Binding listeners creates a temporary reference that prevents uninstalling.
 class Component {
   onAttached() {
@@ -1731,18 +2113,28 @@ class Component {
 }
 ```
 
+<a id="features-functions-default-parameters"></a>
+
+<div class="numbered"></div>
+
+<a id="parameter-initializers"></a>
+
 #### Parameter initializers
 
 Optional function parameters *may* be given a default initializer to use when
 the argument is omitted. Initializers *must not* have any observable side
 effects. Initializers *should* be kept as simple as possible.
 
-```
+<div class='goodcode'></div>
+
+```ts
 function process(name: string, extraContext: string[] = []) {}
 function activate(index = 0) {}
 ```
 
-```
+<div class='badcode'></div>
+
+```ts
 // BAD: side effect of incrementing the counter
 let globalCounter = 0;
 function newId(index = globalCounter++) {}
@@ -1760,16 +2152,31 @@ Use default parameters sparingly. Prefer
 there are more than a small handful of optional parameters that do not have a
 natural order.
 
+<a id="features-functions-rest-parameters"></a>
+<a id="features-functions-spread-operator"></a>
+
+<div class="numbered"></div>
+
+<a id="rest-and-spread"></a>
+
 #### Prefer rest and spread when appropriate
 
 Use a *rest* parameter instead of accessing `arguments`. Never name a local
 variable or parameter `arguments`, which confusingly shadows the built-in name.
 
-```
+<div class='goodcode'></div>
+
+```ts
 function variadic(array: string[], ...numbers: number[]) {}
 ```
 
 Use function spread syntax instead of `Function.prototype.apply`.
+
+<a id="features-functions-generators"></a>
+
+<div class="numbered"></div>
+
+<a id="formatting-functions"></a>
 
 #### Formatting functions
 
@@ -1787,10 +2194,16 @@ recommended but not required.
 
 Do not put a space after the `...` in rest or spread syntax.
 
-```
+<div class='goodcode'></div>
+
+```ts
 function myFunction(...elements: number[]) {}
 myFunction(...array, ...iterable, ...generator());
 ```
+
+<div class="numbered"></div>
+
+<a id="function-length"></a>
 
 #### Function Length
 
@@ -1803,17 +2216,21 @@ structure of the program.
 This is not an exact science, but here are some examples of signs that your
 method might be too complex:
 
-* It has several levels of nesting.
-* It consists of several separate blocks of code, that each require a comment
-  to explain what it does.
-* It has to handle different types of exceptions in different places.
-* It can’t all fit on your screen at once.
+*   It has several levels of nesting.
+*   It consists of several separate blocks of code, that each require a comment
+    to explain what it does.
+*   It has to handle different types of exceptions in different places.
+*   It can't all fit on your screen at once.
 
 If working with such a function proves to be difficult, you find that errors are
 hard to debug, or you want to use a piece of it in several different contexts,
 consider breaking up the function into smaller and more manageable pieces. Note
 that there is nothing wrong with a private helper method or class that is used
 only once; these can be a useful tool for making code more readable.
+
+<div class="numbered"></div>
+
+<a id="features-this"></a>
 
 ### this
 
@@ -1824,13 +2241,31 @@ arrow functions defined in a scope where `this` may be used.
 Never use `this` to refer to the global object, the context of an `eval`, the
 target of an event, or unnecessarily `call()`ed or `apply()`ed functions.
 
-```
+<div class='badcode'></div>
+
+```ts
 this.alert('Hello');
 ```
 
+<div class="numbered"></div>
+
+<a id="primitive-literals"></a>
+
 ### Primitive literals
 
+<a id="features-string-literals"></a>
+
+<div class="numbered"></div>
+
+<a id="string-literals"></a>
+
 #### String literals
+
+<a id="features-strings-use-single-quotes"></a>
+
+<div class="numbered"></div>
+
+<a id="use-single-quotes"></a>
 
 ##### Use single quotes
 
@@ -1839,6 +2274,13 @@ double quotes (`"`).
 
 Exception: if a string contains a single quote character, it may be delimited
 with double quotes to avoid having to escape the quote.
+
+<a id="syntax-no-line-continuations"></a>
+<a id="features-strings-no-line-continuations"></a>
+
+<div class="numbered"></div>
+
+<a id="no-line-continuations"></a>
 
 ##### No line continuations
 
@@ -1849,7 +2291,9 @@ after the slash, and is less obvious to readers.
 
 Disallowed:
 
-```
+<div class='badcode'></div>
+
+```ts
 const LONG_STRING = 'This is a very very very very very very very long string. \
     It inadvertently contains long stretches of spaces due to how the \
     continued lines are indented.';
@@ -1857,13 +2301,21 @@ const LONG_STRING = 'This is a very very very very very very very long string. \
 
 Instead, write
 
-```
+<div class='goodcode'></div>
+
+```ts
 const LONG_STRING = 'This is a very very very very very very long string. ' +
     'It does not contain long stretches of spaces because it uses ' +
     'concatenated strings.';
 const SINGLE_STRING =
     'http://it.is.also/acceptable_to_use_a_single_long_string_when_breaking_would_hinder_search_discoverability';
 ```
+
+<a id="features-strings-template-strings"></a>
+
+<div class="numbered"></div>
+
+<a id="template-literals"></a>
 
 ##### Template literals
 
@@ -1877,7 +2329,9 @@ not matter.
 
 Example:
 
-```
+<div class='goodcode'></div>
+
+```ts
 function arithmetic(a: number, b: number) {
   return `Here is a table of arithmetic operations:
 ${a} + ${b} = ${a + b}
@@ -1887,6 +2341,12 @@ ${a} / ${b} = ${a / b}`;
 }
 ```
 
+<a id="features-number-literals"></a>
+
+<div class="numbered"></div>
+
+<a id="number-literals"></a>
+
 #### Number literals
 
 Numbers may be specified in decimal, hex, octal, or binary. Use exactly `0x`,
@@ -1894,12 +2354,18 @@ Numbers may be specified in decimal, hex, octal, or binary. Use exactly `0x`,
 respectively. Never include a leading zero unless it is immediately followed by
 `x`, `o`, or `b`.
 
+<div class="numbered"></div>
+
+<a id="type-coercion"></a>
+
 #### Type coercion
 
 TypeScript code *may* use the `String()` and `Boolean()` (note: no `new`!)
 functions, string template literals, or `!!` to coerce types.
 
-```
+<div class='goodcode'></div>
+
+```ts
 const bool = Boolean(0);
 const str = String(aNumber);
 const bool2 = !!str;
@@ -1910,7 +2376,9 @@ Values of enum types (including unions of enum types and other types) *must not*
 be converted to booleans with `Boolean()` or `!!`, and must instead be compared
 explicitly with comparison operators.
 
-```
+<div class='badcode'></div>
+
+```ts
 enum SupportLevel {
   NONE,
   BASIC,
@@ -1924,7 +2392,9 @@ const maybeLevel: SupportLevel|undefined = ...;
 enabled = !!maybeLevel;
 ```
 
-```
+<div class='goodcode'></div>
+
+```ts
 enum SupportLevel {
   NONE,
   BASIC,
@@ -1940,18 +2410,22 @@ enabled = maybeLevel !== undefined && maybeLevel !== SupportLevel.NONE;
 
 Why?
 
-For most purposes, it doesn’t matter what number or string value an enum name is
+For most purposes, it doesn't matter what number or string value an enum name is
 mapped to at runtime, because values of enum types are referred to by name in
 source code. Consequently, engineers are accustomed to not thinking about this,
 and so situations where it *does* matter are undesirable because they will be
 surprising. Such is the case with conversion of enums to booleans; in
 particular, by default, the first declared enum value is falsy (because it is 0)
 while the others are truthy, which is likely to be unexpected. Readers of code
-that uses an enum value may not even know whether it’s the first declared value
+that uses an enum value may not even know whether it's the first declared value
 or not.
 
 Using string concatenation to cast to string is discouraged, as we check that
 operands to the plus operator are of matching types.
+
+<div class="numbered"></div>
+
+<a id="coercing-to-numbers"></a>
 
 ##### Coercing to numbers
 
@@ -1973,15 +2447,25 @@ case, the input string *must* be checked for validity (i.e. all characters are
 valid digits) before parsing to ensure trailing garbage is not silently ignored.
 The output *must* also be checked against `NaN`.
 
-```
+<div class='badcode'></div>
+
+```ts
 const x = +y;
 const x1 = parseFloat(y1);
 ```
 
-```
+<div class='goodcode'></div>
+
+```ts
 const x = Number(y);
 if (!isFinite(x)) throw new Error(...);
 ```
+
+<a id="type-coercion-implicit"></a>
+
+<div class="numbered"></div>
+
+<a id="implicit-coercion"></a>
 
 ##### Implicit coercion
 
@@ -1989,13 +2473,17 @@ Do not use explicit boolean coercions in conditional clauses that have implicit
 boolean coercion (specifically, the conditions in `if`, `for`, and `while`
 statements).
 
-```
+<div class='badcode'></div>
+
+```ts
 const foo: MyInterface|null = ...;
 if (!!foo) {...}
 while (!!foo) {...}
 ```
 
-```
+<div class='goodcode'></div>
+
+```ts
 const foo: MyInterface|null = ...;
 if (foo) {...}
 while (foo) {...}
@@ -2005,7 +2493,9 @@ while (foo) {...}
 unions of enum types and other types) *must not* be implicitly coerced to
 booleans, and must instead be compared explicitly with comparison operators.
 
-```
+<div class='badcode'></div>
+
+```ts
 enum SupportLevel {
   NONE,
   BASIC,
@@ -2019,7 +2509,9 @@ const maybeLevel: SupportLevel|undefined = ...;
 if (maybeLevel) {...}
 ```
 
-```
+<div class='goodcode'></div>
+
+```ts
 enum SupportLevel {
   NONE,
   BASIC,
@@ -2036,14 +2528,29 @@ if (maybeLevel !== undefined && maybeLevel !== SupportLevel.NONE) {...}
 Other types of values may be either implicitly coerced to booleans or compared
 explicitly with comparison operators:
 
-```
+<div class='goodcode'></div>
+
+```ts
 // Explicitly comparing > 0 is OK:
 if (arr.length > 0) {...}
 // so is relying on boolean coercion:
 if (arr.length) {...}
 ```
 
+<a id="features-control-structures"></a>
+
+<div class="numbered"></div>
+
+<a id="control-structures"></a>
+
 ### Control structures
+
+<a id="formatting-braces"></a>
+<a id="formatting-braces-all"></a>
+
+<div class="numbered"></div>
+
+<a id="control-flow-statements-blocks"></a>
 
 #### Control flow statements and blocks
 
@@ -2051,7 +2558,9 @@ Control flow statements (`if`, `else`, `for`, `do`, `while`, etc) always use
 braced blocks for the containing code, even if the body contains only a single
 statement. The first statement of a non-empty block must begin on its own line.
 
-```
+<div class='goodcode'></div>
+
+```ts
 for (let i = 0; i < x; i++) {
   doSomethingWith(i);
 }
@@ -2061,7 +2570,9 @@ if (x) {
 }
 ```
 
-```
+<div class='badcode'></div>
+
+```ts
 if (x)
   doSomethingWithALongMethodNameThatForcesANewLine(x);
 
@@ -2070,23 +2581,33 @@ for (let i = 0; i < x; i++) doSomethingWith(i);
 
 **Exception:** `if` statements fitting on one line *may* elide the block.
 
-```
+<div class='goodcode'></div>
+
+```ts
 if (x) x.doFoo();
 ```
+
+<div class="numbered"></div>
+
+<a id="assignment-in-control-statements"></a>
 
 ##### Assignment in control statements
 
 Prefer to avoid assignment of variables inside control statements. Assignment
 can be easily mistaken for equality checks inside control statements.
 
-```
+<div class='badcode'></div>
+
+```ts
 if (x = someFunction()) {
   // Assignment easily mistaken with equality check
   // ...
 }
 ```
 
-```
+<div class='goodcode'></div>
+
+```ts
 x = someFunction();
 if (x) {
   // ...
@@ -2096,19 +2617,27 @@ if (x) {
 In cases where assignment inside the control statement is preferred, enclose the
 assignment in additional parenthesis to indicate it is intentional.
 
-```
+```ts
 while ((x = someFunction())) {
   // Double parenthesis shows assignment is intentional
   // ...
 }
 ```
 
+<a id="features-for-loops"></a>
+
+<div class="numbered"></div>
+
+<a id="iterating-containers"></a>
+
 ##### Iterating containers
 
 Prefer `for (... of someArr)` to iterate over arrays. `Array.prototype.forEach`
 and vanilla `for` loops are also allowed:
 
-```
+<div class='goodcode'></div>
+
+```ts
 for (const x of someArr) {
   // x is a value of someArr.
 }
@@ -2126,9 +2655,11 @@ for (const [i, x] of someArr.entries()) {
 `for`-`in` loops may only be used on dict-style objects (see
 [below](#optimization-compatibility-for-property-access) for more info). Do not
 use `for (... in ...)` to iterate over arrays as it will counterintuitively give
-the array’s indices (as strings!), not values:
+the array's indices (as strings!), not values:
 
-```
+<div class='badcode'></div>
+
+```ts
 for (const x in someArray) {
   // x is the index!
 }
@@ -2138,7 +2669,9 @@ for (const x in someArray) {
 unwanted prototype properties. Prefer `for`-`of` with `Object.keys`,
 `Object.values`, or `Object.entries` over `for`-`in` when possible.
 
-```
+<div class='goodcode'></div>
+
+```ts
 for (const key in obj) {
   if (!obj.hasOwnProperty(key)) continue;
   doWork(key, obj[key]);
@@ -2154,6 +2687,12 @@ for (const [key, value] of Object.entries(obj)) {
 }
 ```
 
+<a id="formatting-grouping-parentheses"></a>
+
+<div class="numbered"></div>
+
+<a id="grouping-parentheses"></a>
+
 #### Grouping parentheses
 
 Optional grouping parentheses are omitted only when the author and reviewer
@@ -2164,6 +2703,13 @@ memorized.
 
 Do not use unnecessary parentheses around the entire expression following
 `delete`, `typeof`, `void`, `return`, `throw`, `case`, `in`, `of`, or `yield`.
+
+<a id="exceptions"></a>
+<a id="features-exceptions"></a>
+
+<div class="numbered"></div>
+
+<a id="exception-handling"></a>
 
 #### Exception handling
 
@@ -2178,19 +2724,31 @@ Prefer throwing exceptions over ad-hoc error-handling approaches (such as
 passing an error container reference type, or returning an object with an error
 property).
 
+<div class="numbered"></div>
+
+<a id="instantiate-errors-using-new"></a>
+
 ##### Instantiate errors using `new`
 
 Always use `new Error()` when instantiating exceptions, instead of just calling
 `Error()`. Both forms create a new `Error` instance, but using `new` is more
 consistent with how other objects are instantiated.
 
-```
+<div class='goodcode'></div>
+
+```ts
 throw new Error('Foo is not a valid bar.');
 ```
 
-```
+<div class='badcode'></div>
+
+```ts
 throw Error('Foo is not a valid bar.');
 ```
+
+<div class="numbered"></div>
+
+<a id="only-throw-errors"></a>
 
 ##### Only throw errors
 
@@ -2198,10 +2756,12 @@ Although JavaScript allows throwing arbitrary values, stack traces are only
 populated if the thrown value is an `Error`. **Do not** throw primitives
 (including strings, numbers, null or undefined) or objects that are not
 instances of `Error` or a subclass. This restriction also extends to all APIs
-that may throw their arguments, including `Promise.reject` or `AbortSignal`’s
+that may throw their arguments, including `Promise.reject` or `AbortSignal`'s
 various `abort` methods.
 
-```
+<div class='badcode'></div>
+
+```ts
 // bad: does not get a stack trace.
 throw 'oh noes!';
 // For promises
@@ -2215,7 +2775,9 @@ AbortSignal.abort('my other custom abort error');
 
 Instead, only throw (subclasses of) `Error`:
 
-```
+<div class='goodcode'></div>
+
+```ts
 // Throw only Errors
 throw new Error('oh noes!');
 // ... or subtypes of Error.
@@ -2233,16 +2795,22 @@ AbortSignal.abort(new Error('my other custom abort error'));
 ```
 
 Note: Calling `AbortController#abort` or `AbortSignal.abort` with no arguments
-is valid because a new “AbortError” `DOMException` will be created by default
+is valid because a new "AbortError" `DOMException` will be created by default
 and assigned as the `AbortSignal#reason` (see
 [MDN](https://developer.mozilla.org/en-US/docs/Web/API/AbortController/abort#reason)).
+
+<div class="numbered"></div>
+
+<a id="catching-and-rethrowing"></a>
 
 ##### Catching and rethrowing
 
 When catching errors, code *should* assume that all thrown errors are instances
 of `Error`.
 
-```
+<div class='goodcode'></div>
+
+```ts
 function assertIsError(e: unknown): asserts e is Error {
   if (!(e instanceof Error)) throw new Error("e is not an Error");
 }
@@ -2264,7 +2832,9 @@ called API is conclusively known to throw non-`Error`s in violation of the above
 rule. In that case, a comment should be included to specifically identify where
 the non-`Error`s originate.
 
-```
+<div class='goodcode'></div>
+
+```ts
 try {
   badApiThrowingStrings();
 } catch (e: unknown) {
@@ -2280,13 +2850,21 @@ Avoid
 Repeating the same defenses against a problem that will not exist in most code
 leads to boiler-plate code that is not useful.
 
+<a id="features-empty-catch-blocks"></a>
+
+<div class="numbered"></div>
+
+<a id="empty-catch-blocks"></a>
+
 ##### Empty catch blocks
 
 It is very rarely correct to do nothing in response to a caught exception. When
 it truly is appropriate to take no action whatsoever in a catch block, the
 reason this is justified is explained in a comment.
 
-```
+<div class='goodcode'></div>
+
+```ts
   try {
     return handleNumericResponse(response);
   } catch (e: unknown) {
@@ -2297,7 +2875,9 @@ reason this is justified is explained in a comment.
 
 Disallowed:
 
-```
+<div class='badcode'></div>
+
+```ts
   try {
     shouldFail();
     fail('expected an error');
@@ -2308,13 +2888,22 @@ Disallowed:
 Tip: Unlike in some other languages, patterns like the above simply don’t work
 since this will catch the error thrown by `fail`. Use `assertThrows()` instead.
 
+<a id="features-switch-statements"></a>
+<a id="features-switch-default-case"></a>
+
+<div class="numbered"></div>
+
+<a id="error-cause"></a>
+
 ##### ErrorOptions cause must be an Error object
 
 When passing an argument for the ErrorOptions parameter, the `cause` property
 must be initialized with a subtype of error. This effectively creates a chain of
 error objects with useful stack traces.
 
-```
+<div class='goodcode'></div>
+
+```ts
 try {
   ...
 } catch (e: unknown) {
@@ -2324,7 +2913,9 @@ try {
 }
 ```
 
-```
+<div class='badcode'></div>
+
+```ts
 const status = doSomething();
 if (status !== success) {
   throw new Error('doSomething failed', {cause: status});
@@ -2332,10 +2923,12 @@ if (status !== success) {
 ```
 
 If the `cause` initializer refers to the catch clause variable of type unknown,
-it’s ok to omit a type check, since our codebase assumes you cannot throw
+it's ok to omit a type check, since our codebase assumes you cannot throw
 anything other than an `Error` object.
 
-```
+<div class='goodcode'></div>
+
+```ts
 try {
   ...
 } catch (e: unknown) {
@@ -2348,7 +2941,9 @@ In TypeScript, type `Error` happens to be assignable to `ErrorOptions`. Thus it
 is possible to pass an error object accidentally as the ErrorOptions parameter,
 which is very likely a bug in the code.
 
-```
+<div class='badcode'></div>
+
+```ts
 try {
   ...
 } catch (e: unknown) {
@@ -2358,12 +2953,18 @@ try {
 }
 ```
 
+<div class="numbered"></div>
+
+<a id="switch-statements"></a>
+
 #### Switch statements
 
 All `switch` statements *must* contain a `default` statement group, even if it
 contains no code. The `default` statement group must be last.
 
-```
+<div class='goodcode'></div>
+
+```ts
 switch (x) {
   case Y:
     doSomethingElse();
@@ -2377,7 +2978,9 @@ Within a switch block, each statement group either terminates abruptly with a
 `break`, a `return` statement, or by throwing an exception. Non-empty statement
 groups (`case ...`) *must not* fall through (enforced by the compiler):
 
-```
+<div class='badcode'></div>
+
+```ts
 switch (x) {
   case X:
     doSomething();
@@ -2389,7 +2992,9 @@ switch (x) {
 
 Empty statement groups are allowed to fall through:
 
-```
+<div class='goodcode'></div>
+
+```ts
 switch (x) {
   case X:
   case Y:
@@ -2399,6 +3004,13 @@ switch (x) {
 }
 ```
 
+<a id="features-equality-checks"></a>
+<a id="features-equality-checks-exceptions"></a>
+
+<div class="numbered"></div>
+
+<a id="equality-checks"></a>
+
 #### Equality checks
 
 Always use triple equals (`===`) and not equals (`!==`). The double equality
@@ -2406,13 +3018,17 @@ operators cause error prone type coercions that are hard to understand and
 slower to implement for JavaScript Virtual Machines. See also the
 [JavaScript equality table](https://dorey.github.io/JavaScript-Equality-Table/).
 
-```
+<div class='badcode'></div>
+
+```ts
 if (foo == 'bar' || baz != bam) {
   // Hard to understand behaviour due to type coercion.
 }
 ```
 
-```
+<div class='goodcode'></div>
+
+```ts
 if (foo === 'bar' || baz !== bam) {
   // All good here.
 }
@@ -2421,11 +3037,17 @@ if (foo === 'bar' || baz !== bam) {
 **Exception:** Comparisons to the literal `null` value *may* use the `==` and
 `!=` operators to cover both `null` and `undefined` values.
 
-```
+<div class='goodcode'></div>
+
+```ts
 if (foo == null) {
   // Will trigger when foo is null or undefined.
 }
 ```
+
+<div class="numbered"></div>
+
+<a id="type-and-non-nullability-assertions"></a>
 
 #### Type and non-nullability assertions
 
@@ -2439,7 +3061,9 @@ without an obvious or explicit reason for doing so.
 
 Instead of the following:
 
-```
+<div class='badcode'></div>
+
+```ts
 (x as Foo).foo();
 
 y!.bar();
@@ -2448,7 +3072,9 @@ y!.bar();
 When you want to assert a type or non-nullability the best answer is to
 explicitly write a runtime check that performs that check.
 
-```
+<div class='goodcode'></div>
+
+```ts
 // assuming Foo is a class.
 if (x instanceof Foo) {
   x.foo();
@@ -2463,7 +3089,9 @@ Sometimes due to some local property of your code you can be sure that the
 assertion form is safe. In those situations, you *should* add clarification to
 explain why you are ok with the unsafe behavior:
 
-```
+<div class='goodcode'></div>
+
+```ts
 // x is a Foo, because ...
 (x as Foo).foo();
 
@@ -2476,20 +3104,32 @@ comments *may* not be necessary. For example, generated proto code is always
 nullable, but perhaps it is well-known in the context of the code that certain
 fields are always provided by the backend. Use your judgement.
 
+<div class="numbered"></div>
+
+<a id="type-assertions-syntax"></a>
+
 ##### Type assertion syntax
 
 Type assertions *must* use the `as` syntax (as opposed to the angle brackets
 syntax). This enforces parentheses around the assertion when accessing a member.
 
-```
+<div class='badcode'></div>
+
+```ts
 const x = (<Foo>z).length;
 const y = <Foo>z.length;
 ```
 
-```
+<div class='goodcode'></div>
+
+```ts
 // z must be Foo because ...
 const x = (z as Foo).length;
 ```
+
+<div class="numbered"></div>
+
+<a id="double-assertions"></a>
 
 ##### Double assertions
 
@@ -2497,18 +3137,24 @@ From the
 [TypeScript handbook](https://www.typescriptlang.org/docs/handbook/2/everyday-types.html#type-assertions),
 TypeScript only allows type assertions which convert to a *more specific* or
 *less specific* version of a type. Adding a type assertion (`x as Foo`) which
-does not meet this criteria will give the error: “Conversion of type ‘X’ to type
-‘Y’ may be a mistake because neither type sufficiently overlaps with the other.”
+does not meet this criteria will give the error: "Conversion of type 'X' to type
+'Y' may be a mistake because neither type sufficiently overlaps with the other."
 
 If you are sure an assertion is safe, you can perform a *double assertion*. This
 involves casting through `unknown` since it is less specific than all types.
 
-```
+<div class='goodcode'></div>
+
+```ts
 // x is a Foo here, because...
 (x as unknown as Foo).fooMethod();
 ```
 
 Use `unknown` (instead of `any` or `{}`) as the intermediate type.
+
+<div class="numbered"></div>
+
+<a id="type-assertions-and-object-literals"></a>
 
 ##### Type assertions and object literals
 
@@ -2516,7 +3162,9 @@ Use type annotations (`: Foo`) instead of type assertions (`as Foo`) to specify
 the type of an object literal. This allows detecting refactoring bugs when the
 fields of an interface change over time.
 
-```
+<div class='badcode'></div>
+
+```ts
 interface Foo {
   bar: number;
   baz?: string;  // was "bam", but later renamed to "baz".
@@ -2535,7 +3183,9 @@ function func() {
 }
 ```
 
-```
+<div class='goodcode'></div>
+
+```ts
 interface Foo {
   bar: number;
   baz?: string;
@@ -2554,12 +3204,18 @@ function func(): Foo {
 }
 ```
 
+<div class="numbered"></div>
+
+<a id="keep-try-blocks-focused"></a>
+
 #### Keep try blocks focused
 
 Limit the amount of code inside a try block, if this can be done without hurting
 readability.
 
-```
+<div class='badcode'></div>
+
+```ts
 try {
   const result = methodThatMayThrow();
   use(result);
@@ -2568,7 +3224,9 @@ try {
 }
 ```
 
-```
+<div class='goodcode'></div>
+
+```ts
 let result;
 try {
   result = methodThatMayThrow();
@@ -2586,25 +3244,29 @@ temporary variable.
 **Exception:** There may be performance issues if try blocks are inside a loop.
 Widening try blocks to cover a whole loop is ok.
 
+<div class="numbered"></div>
+
+<a id="decorators"></a>
+
 ### Decorators
 
 Decorators are syntax with an `@` prefix, like `@MyDecorator`.
 
 Do not define new decorators. Only use the decorators defined by frameworks:
 
-* Angular (e.g. `@Component`, `@NgModule`, etc.)
-* Polymer (e.g. `@property`)
+-   Angular (e.g. `@Component`, `@NgModule`, etc.)
+-   Polymer (e.g. `@property`)
 
 Why?
 
 We generally want to avoid decorators, because they were an experimental feature
-that have since diverged from the TC39 proposal and have known bugs that won’t
+that have since diverged from the TC39 proposal and have known bugs that won't
 be fixed.
 
 When using decorators, the decorator *must* immediately precede the symbol it
 decorates, with no empty lines between:
 
-```
+```ts
 /** JSDoc comments go before decorators */
 @Component({...})  // Note: no empty line after the decorator.
 class MyComp {
@@ -2615,7 +3277,17 @@ class MyComp {
 }
 ```
 
+<div class="numbered"></div>
+
+<a id="disallowed-features"></a>
+
 ### Disallowed features
+
+<a id="disallowed-features-wrapper-objects"></a>
+
+<div class="numbered"></div>
+
+<a id="primitive-types-wrapper-classes"></a>
 
 #### Wrapper objects for primitive types
 
@@ -2623,7 +3295,9 @@ TypeScript code *must not* instantiate the wrapper classes for the primitive
 types `String`, `Boolean`, and `Number`. Wrapper classes have surprising
 behavior, such as `new Boolean(false)` evaluating to `true`.
 
-```
+<div class='badcode'></div>
+
+```ts
 const s = new String('hello');
 const b = new Boolean(false);
 const n = new Number(5);
@@ -2633,11 +3307,22 @@ The wrappers may be called as functions for coercing (which is preferred over
 using `+` or concatenating the empty string) or creating symbols. See
 [type coercion](#type-coercion) for more information.
 
+<a id="formatting-semicolons-are-required"></a>
+<a id="disallowed-features-automatic-semicolon-insertion"></a>
+
+<div class="numbered"></div>
+
+<a id="automatic-semicolon-insertion"></a>
+
 #### Automatic Semicolon Insertion
 
 Do not rely on Automatic Semicolon Insertion (ASI). Explicitly end all
 statements using a semicolon. This prevents bugs due to incorrect semicolon
 insertions.
+
+<div class="numbered"></div>
+
+<a id="enums"></a>
 
 #### Const enums
 
@@ -2649,20 +3334,38 @@ TypeScript enums already cannot be mutated; `const enum` is a separate language
 feature related to optimization that makes the enum invisible to JavaScript
 users of the module.
 
+<div class="numbered"></div>
+
+<a id="debugger-statements"></a>
+
 #### Debugger statements
 
 Debugger statements *must not* be included in production code.
 
-```
+<div class='badcode'></div>
+
+```ts
 function debugMe() {
   debugger;
 }
 ```
 
+<a id="disallowed-features-with"></a>
+
+<div class="numbered"></div>
+
+<a id="diallowed-features-with"></a>
+
 #### `with`
 
 Do not use the `with` keyword. It makes your code harder to understand and
 [has been banned in strict mode since ES5](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/with).
+
+<a id="disallowed-features-dynamic-code-evaluation"></a>
+
+<div class="numbered"></div>
+
+<a id="dynamic-code-evaluation"></a>
 
 #### Dynamic code evaluation
 
@@ -2671,31 +3374,43 @@ loaders). These features are potentially dangerous and simply do not work in
 environments using strict
 [Content Security Policies](https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP).
 
+<a id="disallowed-features-non-standard-features"></a>
+
+<div class="numbered"></div>
+
+<a id="non-standard-features"></a>
+
 #### Non-standard features
 
 Do not use non-standard ECMAScript or Web Platform features.
 
 This includes:
 
-* Old features that have been marked deprecated or removed entirely from
-  ECMAScript / the Web Platform (see
-  [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Deprecated_and_obsolete_features))
-* New ECMAScript features that are not yet standardized
-  + Avoid using features that are in current TC39 working draft or currently
-    in the [proposal process](https://tc39.es/process-document/)
-  + Use only ECMAScript features defined in the current ECMA-262
-    specification
-* Proposed but not-yet-complete web standards:
-  + WHATWG proposals that have not completed the
-    [proposal process](https://whatwg.org/faq#adding-new-features).
-* Non-standard language “extensions” (such as those provided by some external
-  transpilers)
+-   Old features that have been marked deprecated or removed entirely from
+    ECMAScript / the Web Platform (see
+    [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Deprecated_and_obsolete_features))
+-   New ECMAScript features that are not yet standardized
+    -   Avoid using features that are in current TC39 working draft or currently
+        in the [proposal process](https://tc39.es/process-document/)
+    -   Use only ECMAScript features defined in the current ECMA-262
+        specification
+-   Proposed but not-yet-complete web standards:
+    -   WHATWG proposals that have not completed the
+        [proposal process](https://whatwg.org/faq#adding-new-features).
+-   Non-standard language “extensions” (such as those provided by some external
+    transpilers)
 
 Projects targeting specific JavaScript runtimes, such as latest-Chrome-only,
 Chrome extensions, Node.JS, Electron, can obviously use those APIs. Use caution
 when considering an API surface that is proprietary and only implemented in some
 browsers; consider whether there is a common library that can abstract this API
 surface away for you.
+
+<a id="disallowed-features-modifying-builtin-objects"></a>
+
+<div class="numbered"></div>
+
+<a id="modifying-builtin-objects"></a>
 
 #### Modifying built-in objects
 
@@ -2705,12 +3420,27 @@ to their prototypes. Avoid depending on libraries that do this.
 Do not add symbols to the global object unless absolutely necessary (e.g.
 required by a third-party API).
 
+<a id="syntax"></a>
+<a id="naming-rules-common-to-all-identifiers"></a>
+
+<div class="numbered"></div>
+
+<a id="naming"></a>
+
 ## Naming
+
+<div class="numbered"></div>
+
+<a id="identifiers"></a>
 
 ### Identifiers
 
 Identifiers *must* use only ASCII letters, digits, underscores (for constants
-and structured test method names), and (rarely) the ‘$’ sign.
+and structured test method names), and (rarely) the '$' sign.
+
+<div class="numbered"></div>
+
+<a id="naming-style"></a>
 
 #### Naming style
 
@@ -2721,20 +3451,26 @@ for more about what not to include.)
 
 Some concrete examples of this rule:
 
-* Do not use trailing or leading underscores for private properties or
-  methods.
-* Do not use the `opt_` prefix for optional parameters.
-  + For accessors, see [accessor rules](#classes-getters-and-setters) below.
-* Do not mark interfaces specially (~~`IMyInterface`~~ or
-  ~~`MyFooInterface`~~) unless it’s idiomatic in its environment. When
-  introducing an interface for a class, give it a name that expresses why the
-  interface exists in the first place (e.g. `class TodoItem` and
-  `interface TodoItemStorage` if the interface expresses the format used for
-  storage/serialization in JSON).
-* Suffixing `Observable`s with `$` is a common external convention and can
-  help resolve confusion regarding observable values vs concrete values.
-  Judgement on whether this is a useful convention is left up to individual
-  teams, but *should* be consistent within projects.
+*   Do not use trailing or leading underscores for private properties or
+    methods.
+*   Do not use the `opt_` prefix for optional parameters.
+    *   For accessors, see [accessor rules](#classes-getters-and-setters) below.
+*   Do not mark interfaces specially (~~`IMyInterface`~~ or
+    ~~`MyFooInterface`~~) unless it's idiomatic in its environment. When
+    introducing an interface for a class, give it a name that expresses why the
+    interface exists in the first place (e.g. `class TodoItem` and
+    `interface TodoItemStorage` if the interface expresses the format used for
+    storage/serialization in JSON).
+*   Suffixing `Observable`s with `$` is a common external convention and can
+    help resolve confusion regarding observable values vs concrete values.
+    Judgement on whether this is a useful convention is left up to individual
+    teams, but *should* be consistent within projects.
+
+<a id="identifiers-abbreviations"></a>
+
+<div class="numbered"></div>
+
+<a id="descriptive-names"></a>
 
 #### Descriptive names
 
@@ -2742,11 +3478,13 @@ Names *must* be descriptive and clear to a new reader. Do not use abbreviations
 that are ambiguous or unfamiliar to readers outside your project, and do not
 abbreviate by deleting letters within a word.
 
-* **Exception:** Variables that are in scope for 10 lines or fewer, including
-  arguments that are *not* part of an exported API, *may* use short (e.g.
-  single letter) variable names.
+*   **Exception:** Variables that are in scope for 10 lines or fewer, including
+    arguments that are *not* part of an exported API, *may* use short (e.g.
+    single letter) variable names.
 
-```
+<div class='goodcode'></div>
+
+```ts
 // Good identifiers:
 errorCount          // No abbreviation.
 dnsConnectionIndex  // Most people know what "DNS" stands for.
@@ -2754,7 +3492,9 @@ referrerUrl         // Ditto for "URL".
 customerId          // "Id" is both ubiquitous and unlikely to be misunderstood.
 ```
 
-```
+<div class='badcode'></div>
+
+```ts
 // Disallowed identifiers:
 n                   // Meaningless.
 nErr                // Ambiguous abbreviation.
@@ -2766,11 +3506,21 @@ kSecondsPerDay      // Do not use Hungarian notation.
 customerID          // Incorrect camelcase of "ID".
 ```
 
+<a id="naming-camel-case-defined"></a>
+
+<div class="numbered"></div>
+
+<a id="camel-case"></a>
+
 #### Camel case
 
 Treat abbreviations like acronyms in names as whole words, i.e. use
 `loadHttpUrl`, not ~~`loadHTTPURL`~~, unless required by a platform name (e.g.
 `XMLHttpRequest`).
+
+<div class="numbered"></div>
+
+<a id="identifiers-dollar-sign"></a>
 
 #### Dollar sign
 
@@ -2778,27 +3528,57 @@ Identifiers *should not* generally use `$`, except when required by naming
 conventions for third party frameworks. [See above](#naming-style) for more on
 using `$` with `Observable` values.
 
+<a id="naming-class-names"></a>
+<a id="naming-method-names"></a>
+<a id="naming-enum-names"></a>
+<a id="naming-constant-names"></a>
+<a id="naming-local-variable-names"></a>
+<a id="naming-non-constant-field-names"></a>
+<a id="naming-parameter-names"></a>
+
+<div class="numbered"></div>
+
+<a id="naming-rules-by-identifier-type"></a>
+
 ### Rules by identifier type
 
 Most identifier names should follow the casing in the table below, based on the
-identifier’s type.
+identifier's type.
 
-| Style | Category |
-| --- | --- |
+<!-- mdformat off -->
+
+| Style            | Category |
+| ---------------- | -------- |
 | `UpperCamelCase` | class / interface / type / enum / decorator / type parameters / component functions in TSX / JSXElement type parameter |
 | `lowerCamelCase` | variable / parameter / function / method / property / module alias |
-| `CONSTANT_CASE` | global constant values, including enum values. See [Constants](#identifiers-constants) below. |
-| `#ident` | private identifiers are never used. |
+| `CONSTANT_CASE`  | global constant values, including enum values. See [Constants](#identifiers-constants) below. |
+| `#ident`         | private identifiers are never used. |
+
+<!-- mdformat on -->
+
+<a id="naming-template-parameter-names"></a>
+
+<div class="numbered"></div>
+
+<a id="identifiers-type-parameters"></a>
 
 #### Type parameters
 
 Type parameters, like in `Array<T>`, *may* use a single upper case character
 (`T`) or `UpperCamelCase`.
 
+<div class="numbered"></div>
+
+<a id="identifiers-test-names"></a>
+
 #### Test names
 
 Test method names inxUnit-style test frameworks *may* be structured with `_`
 separators, e.g. `testX_whenY_doesZ()`.
+
+<div class="numbered"></div>
+
+<a id="identifiers-underscore-prefix-suffix"></a>
 
 #### Underscore (`_`) prefix/suffix
 
@@ -2806,7 +3586,9 @@ An underscore prefix indicates a syntactically-required identifier will not be
 used. It is encouraged to provide a meaningful name after the underscore, but a
 standalone `_` is allowed.
 
-```
+<div class='goodcode'></div>
+
+```ts
 (_projectId, api) => of(!params.disabledApis.includes(api));
 
 [].filter((_, i) => i % 2 === 0);
@@ -2823,11 +3605,15 @@ Do not use this style for trailing unused parameters, those should be omitted.
 Trailing unused parameters are allowed on methods that are specifically intended
 to be overridden.
 
-```
+<div class='badcode'></div>
+
+```ts
 [].filter((element, _index) => !element.hasSomeProperty());
 ```
 
-```
+<div class='goodcode'></div>
+
+```ts
 [].filter(element => !element.hasSomeProperty());
 ```
 
@@ -2837,16 +3623,22 @@ Identifiers must not use `_` as a suffix.
 > tuple), you can insert extra commas in a destructuring statement to ignore
 > in-between elements:
 >
-> ```
+> ```ts
 > const [a, , b] = [1, 5, 10];  // a <- 1, b <- 10
 > ```
+
+<div class="numbered"></div>
+
+<a id="identifiers-imports"></a>
 
 #### Imports
 
 Module namespace imports are `lowerCamelCase` while files are `snake_case`,
 which means that imports correctly will not match in casing style, such as
 
-```
+<div class='goodcode'></div>
+
+```ts
 import * as fooBar from './foo_bar';
 ```
 
@@ -2855,8 +3647,12 @@ naming scheme, but overbearingly common open source use makes the violating
 style more readable. The only libraries that currently fall under this exception
 are:
 
-* [jquery](https://jquery.com/), using the `$` prefix
-* [threejs](https://threejs.org/), using the `THREE` prefix
+*   [jquery](https://jquery.com/), using the `$` prefix
+*   [threejs](https://threejs.org/), using the `THREE` prefix
+
+<div class="numbered"></div>
+
+<a id="identifiers-constants"></a>
 
 #### Constants
 
@@ -2865,7 +3661,9 @@ changed, and *may* be used for values that can technically be modified (i.e.
 values that are not deeply frozen) to indicate to users that they must not be
 modified.
 
-```
+<div class='goodcode'></div>
+
+```ts
 const UNIT_SUFFIXES = {
   'milliseconds': 'ms',
   'seconds': 's',
@@ -2876,7 +3674,9 @@ const UNIT_SUFFIXES = {
 
 A constant can also be a `static readonly` property of a class.
 
-```
+<div class='goodcode'></div>
+
+```ts
 class Foo {
   private static readonly MY_SPECIAL_NUMBER = 5;
 
@@ -2897,6 +3697,12 @@ existing identifier.
 If a value is an arrow function that implements an interface, then it *may* be
 declared `lowerCamelCase`.
 
+<a id="naming-local-aliases"></a>
+
+<div class="numbered"></div>
+
+<a id="aliases"></a>
+
 #### Aliases
 
 When creating a local-scope alias of an existing symbol, use the format of the
@@ -2904,11 +3710,13 @@ existing identifier. The local alias *must* match the existing naming and format
 of the source. For variables use `const` for your local aliases, and for class
 fields use the `readonly` attribute.
 
-> Note: If you’re creating an alias just to expose it to a template in your
+> Note: If you're creating an alias just to expose it to a template in your
 > framework of choice, remember to also apply the proper
 > [access modifiers](#properties-used-outside-of-class-lexical-scope).
 
-```
+<div class='goodcode'></div>
+
+```ts
 const {BrewStateEnum} = SomeType;
 const CAPACITY = 5;
 
@@ -2918,14 +3726,65 @@ class Teapot {
 }
 ```
 
+<div class="numbered"></div>
+
+<a id="overridden-and-implemented-members"></a>
+
+#### Overridden and implemented members
+
+Properties and methods that override, implement, or narrow a base class or
+interface member, or appear in a contextually typed object literal, must match
+the existing declaration's name and casing to compile. Casing rules therefore
+apply only at a member's original declaration, which *must* follow them unless
+an external contract requires otherwise. Consider fixing the original
+declaration's name if possible.
+
+<div class='badcode'></div>
+
+```ts
+interface ServerResponse {
+  // Disallowed: property names must use lowerCamelCase (or CONSTANT_CASE).
+  // The correct name here would be `errorCode`.
+  error_code: number;
+}
+```
+
+<div class='goodcode'></div>
+
+```ts
+// When the existing name is required to match an external contract, suppress
+// the lint warning on the original declaration and include a rationale:
+declare interface ServerResponse {
+  // Required to match external contract.
+  // tslint:disable-next-line:enforce-name-casing
+  error_code: number;
+}
+
+// Extending, implementing, or contextually matching the existing declaration
+// is allowed to follow its naming convention without another suppression:
+interface ErrorResponse extends ServerResponse {
+  error_code: 400 | 500;
+}
+```
+
+<div class="numbered"></div>
+
+<a id="type-system"></a>
+
 ## Type system
+
+<div class="numbered"></div>
+
+<a id="type-inference"></a>
 
 ### Type inference
 
 Code *may* rely on type inference as implemented by the TypeScript compiler for
 all type expressions (variables, fields, return types, etc).
 
-```
+<div class='goodcode'></div>
+
+```ts
 const x = 15;  // Type inferred.
 ```
 
@@ -2934,14 +3793,18 @@ variables or parameters initialized to a `string`, `number`, or `boolean`
 literal. Type annotations are not considered trivial on exported symbols where
 required to be compatible with `isolatedDeclarations`.
 
-```
+<div class='badcode'></div>
+
+```ts
 let count: number = 0;  // Bad: type annotation here is redundant
 
 // Bad: Exported interpolation fails isolatedDeclarations.
 export const PATH = `/users/${id}`;
 ```
 
-```
+<div class='goodcode'></div>
+
+```ts
 let count = 0;
 
 // Good: Explicit type for isolatedDeclarations.
@@ -2951,12 +3814,16 @@ export const PATH: string = `/users/${id}`;
 Also leave out explicit generic types where they are redundant with the type
 annotation.
 
-```
+<div class='badcode'></div>
+
+```ts
 // Bad: Specifying '<string>' twice is unnecessary.
 const x: Set<string> = new Set<string>();
 ```
 
-```
+<div class='goodcode'></div>
+
+```ts
 const x = new Set<string>();             // Preferred when local
 export const y: Set<string> = new Set(); // Annotation required for exports
 ```
@@ -2964,17 +3831,25 @@ export const y: Set<string> = new Set(); // Annotation required for exports
 For more complex expressions, type annotations can help with readability of the
 program:
 
-```
+<div class='badcode'></div>
+
+```ts
 // Hard to reason about the type of 'value' without an annotation.
 const value = await rpc.getSomeValue().transform();
 ```
 
-```
+<div class='goodcode'></div>
+
+```ts
 // Can tell the type of 'value' at a glance.
 const value: string[] = await rpc.getSomeValue().transform();
 ```
 
 Whether an annotation is required is decided by the code reviewer.
+
+<div class="numbered"></div>
+
+<a id="return-types"></a>
 
 #### Return types
 
@@ -2986,9 +3861,15 @@ require return types, but this is not a general TypeScript style requirement.
 There are two benefits to explicitly typing out the implicit return values of
 functions and methods:
 
-* More precise documentation to benefit readers of the code.
-* Surface potential type errors faster in the future if there are code changes
-  that change the return type of the function.
+-   More precise documentation to benefit readers of the code.
+-   Surface potential type errors faster in the future if there are code changes
+    that change the return type of the function.
+
+<a id="null-vs-undefined"></a>
+
+<div class="numbered"></div>
+
+<a id="undefined-and-null"></a>
 
 ### Undefined and null
 
@@ -3002,6 +3883,10 @@ JavaScript APIs use `undefined` (e.g. `Map.get`), while many DOM and Google APIs
 use `null` (e.g. `Element.getAttribute`), so the appropriate absent value
 depends on the context.
 
+<div class="numbered"></div>
+
+<a id="nullableundefined-type-aliases"></a>
+
 #### Nullable/undefined type aliases
 
 Type aliases *must not* include `|null` or `|undefined` in a union type.
@@ -3014,7 +3899,9 @@ Instead, code *must* only add `|null` or `|undefined` when the alias is actually
 used. Code *should* deal with null values close to where they arise, using the
 below techniques.
 
-```
+<div class='badcode'></div>
+
+```ts
 // Bad
 type CoffeeResponse = Latte|Americano|undefined;
 
@@ -3023,7 +3910,9 @@ class CoffeeService {
 }
 ```
 
-```
+<div class='goodcode'></div>
+
+```ts
 // Better
 type CoffeeResponse = Latte|Americano;
 
@@ -3032,24 +3921,34 @@ class CoffeeService {
 }
 ```
 
+<a id="structural-types-vs-nominal-types"></a>
+
+<div class="numbered"></div>
+
+<a id="use-structural-types"></a>
+
 ### Use structural types
 
-TypeScript’s type system is structural, not nominal. That is, a value matches a
-type if it has at least all the properties the type requires and the properties’
+TypeScript's type system is structural, not nominal. That is, a value matches a
+type if it has at least all the properties the type requires and the properties'
 types match, recursively.
 
 When providing a structural-based implementation, explicitly include the type at
 the declaration of the symbol (this allows more precise type checking and error
 reporting).
 
-```
+<div class='goodcode'></div>
+
+```ts
 const foo: Foo = {
   a: 123,
   b: 'abc',
 }
 ```
 
-```
+<div class='badcode'></div>
+
+```ts
 const badFoo = {
   a: 123,
   b: 'abc',
@@ -3058,7 +3957,9 @@ const badFoo = {
 
 Use interfaces to define structural types, not classes
 
-```
+<div class='goodcode'></div>
+
+```ts
 interface Foo {
   a: number;
   b: string;
@@ -3070,7 +3971,9 @@ const foo: Foo = {
 }
 ```
 
-```
+<div class='badcode'></div>
+
+```ts
 class Foo {
   readonly a: number;
   readonly b: number;
@@ -3084,14 +3987,14 @@ const foo: Foo = {
 
 Why?
 
-The “badFoo” object above relies on type inference. Additional fields could be
-added to “badFoo” and the type is inferred based on the object itself.
+The "badFoo" object above relies on type inference. Additional fields could be
+added to "badFoo" and the type is inferred based on the object itself.
 
-When passing a “badFoo” to a function that takes a “Foo”, the error will be at
+When passing a "badFoo" to a function that takes a "Foo", the error will be at
 the function call site, rather than at the object declaration site. This is also
 useful when changing the surface of an interface across broad codebases.
 
-```
+```ts
 interface Animal {
   sound: string;
   name: string;
@@ -3130,6 +4033,12 @@ makeSound(dog);
 makeSound(horse);
 ```
 
+<a id="interfaces-vs-type-aliases"></a>
+
+<div class="numbered"></div>
+
+<a id="prefer-interfaces"></a>
+
 ### Prefer interfaces over type literal aliases
 
 TypeScript supports
@@ -3140,14 +4049,18 @@ tuples, and any other types.
 However, when declaring types for objects, use interfaces instead of a type
 alias for the object literal expression.
 
-```
+<div class='goodcode'></div>
+
+```ts
 interface User {
   firstName: string;
   lastName: string;
 }
 ```
 
-```
+<div class='badcode'></div>
+
+```ts
 type User = {
   firstName: string,
   lastName: string,
@@ -3160,9 +4073,13 @@ These forms are nearly equivalent, so under the principle of just choosing one
 out of two forms to prevent variation, we should choose one. Additionally, there
 are also
 [interesting technical reasons to prefer interface](https://ncjamieson.com/prefer-interfaces/).
-That page quotes the TypeScript team lead: “Honestly, my take is that it should
+That page quotes the TypeScript team lead: "Honestly, my take is that it should
 really just be interfaces for anything that they can model. There is no benefit
-to type aliases when there are so many issues around display/perf.”
+to type aliases when there are so many issues around display/perf."
+
+<div class="numbered"></div>
+
+<a id="arrayt-type"></a>
 
 ### `Array<T>` Type
 
@@ -3178,7 +4095,9 @@ For anything more complex, use the longer form `Array<T>`.
 These rules apply at each level of nesting, i.e. a simple `T[]` nested in a more
 complex type would still be spelled as `T[]`, using the syntax sugar.
 
-```
+<div class='goodcode'></div>
+
+```ts
 let a: string[];
 let b: readonly string[];
 let c: ns.MyObj[];
@@ -3191,7 +4110,9 @@ let i: ReadonlyArray<string[]>;
 let j: Array<readonly string[]>;
 ```
 
-```
+<div class='badcode'></div>
+
+```ts
 let a: Array<string>;  // The syntax sugar is shorter.
 let b: ReadonlyArray<string>;
 let c: Array<ns.MyObj>;
@@ -3204,26 +4125,34 @@ let i: readonly string[][];
 let j: (readonly string[])[];
 ```
 
+<div class="numbered"></div>
+
+<a id="indexable-key-string-type"></a>
+
 ### Indexable types / index signatures (`{[key: string]: T}`)
 
-In JavaScript, it’s common to use an object as an associative array (aka “map”,
-“hash”, or “dict”). Such objects can be typed using an
+In JavaScript, it's common to use an object as an associative array (aka "map",
+"hash", or "dict"). Such objects can be typed using an
 [index signature](https://www.typescriptlang.org/docs/handbook/2/objects.html#index-signatures)
 (`[k: string]: T`) in TypeScript:
 
-```
+```ts
 const fileSizes: {[fileName: string]: number} = {};
 fileSizes['readme.txt'] = 541;
 ```
 
 In TypeScript, provide a meaningful label for the key. (The label only exists
-for documentation; it’s unused otherwise.)
+for documentation; it's unused otherwise.)
 
-```
+<div class='badcode'></div>
+
+```ts
 const users: {[key: string]: number} = ...;
 ```
 
-```
+<div class='goodcode'></div>
+
+```ts
 const users: {[userName: string]: number} = ...;
 ```
 
@@ -3233,18 +4162,22 @@ const users: {[userName: string]: number} = ...;
 > and the ES6 types more explicitly convey your intent. Also, `Map`s can be
 > keyed by—and `Set`s can contain—types other than `string`.
 
-TypeScript’s built-in `Record<Keys, ValueType>` type allows constructing types
+TypeScript's built-in `Record<Keys, ValueType>` type allows constructing types
 with a defined set of keys. This is distinct from associative arrays in that the
 keys are statically known. See advice on that
 [below](#mapped-conditional-types).
 
+<div class="numbered"></div>
+
+<a id="mapped-conditional-types"></a>
+
 ### Mapped and conditional types
 
-TypeScript’s
+TypeScript's
 [mapped types](https://www.typescriptlang.org/docs/handbook/2/mapped-types.html)
 and
 [conditional types](https://www.typescriptlang.org/docs/handbook/2/conditional-types.html)
-allow specifying new types based on other types. TypeScript’s standard library
+allow specifying new types based on other types. TypeScript's standard library
 includes several type operators based on these (`Record`, `Partial`, `Readonly`
 etc).
 
@@ -3252,36 +4185,36 @@ These type system features allow succinctly specifying types and constructing
 powerful yet type safe abstractions. They come with a number of drawbacks
 though:
 
-* Compared to explicitly specifying properties and type relations (e.g. using
-  interfaces and extension, see below for an example), type operators require
-  the reader to mentally evaluate the type expression. This can make programs
-  substantially harder to read, in particular combined with type inference and
-  expressions crossing file boundaries.
-* Mapped & conditional types’ evaluation model, in particular when combined
-  with type inference, is underspecified, not always well understood, and
-  often subject to change in TypeScript compiler versions. Code can
-  “accidentally” compile or seem to give the right results. This increases
-  future support cost of code using type operators.
-* Mapped & conditional types are most powerful when deriving types from
-  complex and/or inferred types. On the flip side, this is also when they are
-  most prone to create hard to understand and maintain programs.
-* Some language tooling does not work well with these type system features.
-  E.g. your IDE’s find references (and thus rename property refactoring) will
-  not find properties in a `Pick<T, Keys>` type, and Code Search won’t
-  hyperlink them. \*
+*   Compared to explicitly specifying properties and type relations (e.g. using
+    interfaces and extension, see below for an example), type operators require
+    the reader to mentally evaluate the type expression. This can make programs
+    substantially harder to read, in particular combined with type inference and
+    expressions crossing file boundaries.
+*   Mapped & conditional types' evaluation model, in particular when combined
+    with type inference, is underspecified, not always well understood, and
+    often subject to change in TypeScript compiler versions. Code can
+    "accidentally" compile or seem to give the right results. This increases
+    future support cost of code using type operators.
+*   Mapped & conditional types are most powerful when deriving types from
+    complex and/or inferred types. On the flip side, this is also when they are
+    most prone to create hard to understand and maintain programs.
+*   Some language tooling does not work well with these type system features.
+    E.g. your IDE's find references (and thus rename property refactoring) will
+    not find properties in a `Pick<T, Keys>` type, and Code Search won't
+    hyperlink them. *
 
 The style recommendation is:
 
-* Always use the simplest type construct that can possibly express your code.
-* A little bit of repetition or verbosity is often much cheaper than the long
-  term cost of complex type expressions.
-* Mapped & conditional types may be used, subject to these considerations.
+*   Always use the simplest type construct that can possibly express your code.
+*   A little bit of repetition or verbosity is often much cheaper than the long
+    term cost of complex type expressions.
+*   Mapped & conditional types may be used, subject to these considerations.
 
-For example, TypeScript’s built-in `Pick<T, Keys>` type allows creating a new
+For example, TypeScript's built-in `Pick<T, Keys>` type allows creating a new
 type by subsetting another type `T`, but simple interface extension can often be
 easier to understand.
 
-```
+```ts
 interface User {
   shoeSize: number;
   favoriteIcecream: string;
@@ -3294,7 +4227,7 @@ type FoodPreferences = Pick<User, 'favoriteIcecream'|'favoriteChocolate'>;
 
 This is equivalent to spelling out the properties on `FoodPreferences`:
 
-```
+```ts
 interface FoodPreferences {
   favoriteIcecream: string;
   favoriteChocolate: string;
@@ -3304,7 +4237,9 @@ interface FoodPreferences {
 To reduce duplication, `User` could extend `FoodPreferences`, or (possibly
 better) nest a field for food preferences:
 
-```
+<div class='goodcode'></div>
+
+```ts
 interface FoodPreferences { /* as above */ }
 interface User extends FoodPreferences {
   shoeSize: number;
@@ -3316,9 +4251,13 @@ Using interfaces here makes the grouping of properties explicit, improves IDE
 support, allows better optimization, and arguably makes the code easier to
 understand.
 
+<div class="numbered"></div>
+
+<a id="any"></a>
+
 ### `any` Type
 
-TypeScript’s `any` type is a super and subtype of all other types, and allows
+TypeScript's `any` type is a super and subtype of all other types, and allows
 dereferencing all properties. As such, `any` is dangerous - it can mask severe
 programming errors, and its use undermines the value of having static types in
 the first place.
@@ -3326,15 +4265,21 @@ the first place.
 **Consider *not* to use `any`.** In circumstances where you want to use `any`,
 consider one of:
 
-* [Provide a more specific type](#any-specific)
-* [Use `unknown`](#any-unknown)
-* [Suppress the lint warning and document why](#any-suppress)
+-   [Provide a more specific type](#any-specific)
+-   [Use `unknown`](#any-unknown)
+-   [Suppress the lint warning and document why](#any-suppress)
+
+<div class="numbered"></div>
+
+<a id="any-specific"></a>
 
 #### Providing a more specific type
 
 Use interfaces , an inline object type, or a type alias:
 
-```
+<div class='goodcode'></div>
+
+```ts
 // Use declared interfaces to represent server-side JSON.
 declare interface MyUserJson {
   name: string;
@@ -3359,6 +4304,10 @@ function nicestElement<T>(items: T[]): T {
 }
 ```
 
+<div class="numbered"></div>
+
+<a id="any-unknown"></a>
+
 #### Using `unknown` over `any`
 
 The `any` type allows assignment into any other type and dereferencing any
@@ -3367,13 +4316,17 @@ just needs to express that a type is unknown. Use the built-in type `unknown` in
 that situation — it expresses the concept and is much safer as it does not allow
 dereferencing arbitrary properties.
 
-```
+<div class='goodcode'></div>
+
+```ts
 // Can assign any value (including null or undefined) into this but cannot
 // use it without narrowing the type or casting.
 const val: unknown = value;
 ```
 
-```
+<div class='badcode'></div>
+
+```ts
 const danger: any = value /* result of an arbitrary expression */;
 danger.whoops();  // This access is completely unchecked!
 ```
@@ -3381,13 +4334,19 @@ danger.whoops();  // This access is completely unchecked!
 To safely use `unknown` values, narrow the type using a
 [type guard](https://www.typescriptlang.org/docs/handbook/advanced-types.html#type-guards-and-differentiating-types)
 
+<div class="numbered"></div>
+
+<a id="any-suppress"></a>
+
 #### Suppressing `any` lint warnings
 
 Sometimes using `any` is legitimate, for example in tests to construct a mock
 object. In such cases, add a comment that suppresses the lint warning, and
 document why it is legitimate.
 
-```
+<div class='goodcode'></div>
+
+```ts
 // This test only needs a partial implementation of BookService, and if
 // we overlooked something the test will fail in an obvious way.
 // This is an intentionally unsafe partial mock
@@ -3398,13 +4357,19 @@ const mockBookService = ({get() { return mockBook; }} as any) as BookService;
 const component = new MyComponent(mockBookService, /* unused ShoppingCart */ null as any);
 ```
 
+<div class="numbered"></div>
+
+<a id="empty-interface-type"></a>
+
 ### `{}` Type
 
 The `{}` type, also known as an *empty interface* type, represents an interface
 with no properties. An empty interface type has no specified properties and
 therefore any non-nullish value is assignable to it.
 
-```
+<div class='badcode'></div>
+
+```ts
 let player: {};
 
 player = {
@@ -3414,7 +4379,9 @@ player = {
 console.log(player.health) // Property 'health' does not exist on type '{}'.
 ```
 
-```
+<div class='badcode'></div>
+
+```ts
 function takeAnything(obj:{}) {
 
 }
@@ -3427,20 +4394,26 @@ Google3 code **should not** use `{}` for most use cases. `{}` represents any
 non-nullish primitive or object type, which is rarely appropriate. Prefer one of
 the following more-descriptive types:
 
-* `unknown` can hold any value, including `null` or `undefined`, and is
-  generally more appropriate for opaque values.
-* `Record<string, T>` is better for dictionary-like objects, and provides
-  better type safety by being explicit about the type `T` of contained values
-  (which may itself be `unknown`).
-* `object` excludes primitives as well, leaving only non-nullish functions and
-  objects, but without any other assumptions about what properties may be
-  available.
+*   `unknown` can hold any value, including `null` or `undefined`, and is
+    generally more appropriate for opaque values.
+*   `Record<string, T>` is better for dictionary-like objects, and provides
+    better type safety by being explicit about the type `T` of contained values
+    (which may itself be `unknown`).
+*   `object` excludes primitives as well, leaving only non-nullish functions and
+    objects, but without any other assumptions about what properties may be
+    available.
+
+<div class="numbered"></div>
+
+<a id="tuple-types"></a>
 
 ### Tuple types
 
 If you are tempted to create a Pair type, instead use a tuple type:
 
-```
+<div class='badcode'></div>
+
+```ts
 interface Pair {
   first: string;
   second: string;
@@ -3451,7 +4424,9 @@ function splitInHalf(input: string): Pair {
 }
 ```
 
-```
+<div class='goodcode'></div>
+
+```ts
 function splitInHalf(input: string): [string, string] {
   ...
   return [x, y];
@@ -3461,12 +4436,14 @@ function splitInHalf(input: string): [string, string] {
 const [leftHalf, rightHalf] = splitInHalf('my string');
 ```
 
-However, often it’s clearer to provide meaningful names for the properties.
+However, often it's clearer to provide meaningful names for the properties.
 
 If declaring an `interface` is too heavyweight, you can use an inline object
 literal type:
 
-```
+<div class='goodcode'></div>
+
+```ts
 function splitHostPort(address: string): {host: string, port: number} {
   ...
 }
@@ -3479,20 +4456,28 @@ use(address.port);
 const {host, port} = splitHostPort(userAddress);
 ```
 
+<div class="numbered"></div>
+
+<a id="wrapper-types"></a>
+
 ### Wrapper types
 
 There are a few types related to JavaScript primitives that *should not* ever be
 used:
 
-* `String`, `Boolean`, and `Number` have slightly different meaning from the
-  corresponding primitive types `string`, `boolean`, and `number`. Always use
-  the lowercase version.
-* `Object` has similarities to both `{}` and `object`, but is slightly looser.
-  Use `{}` for a type that include everything except `null` and `undefined`,
-  or lowercase `object` to further exclude the other primitive types (the
-  three mentioned above, plus `symbol` and `bigint`).
+-   `String`, `Boolean`, and `Number` have slightly different meaning from the
+    corresponding primitive types `string`, `boolean`, and `number`. Always use
+    the lowercase version.
+-   `Object` has similarities to both `{}` and `object`, but is slightly looser.
+    Use `{}` for a type that include everything except `null` and `undefined`,
+    or lowercase `object` to further exclude the other primitive types (the
+    three mentioned above, plus `symbol` and `bigint`).
 
 Further, never invoke the wrapper types as constructors (with `new`).
+
+<div class="numbered"></div>
+
+<a id="return-type-only-generics"></a>
 
 ### Return type only generics
 
@@ -3500,13 +4485,45 @@ Avoid creating APIs that have return type only generics. When working with
 existing APIs that have return type only generics always explicitly specify the
 generics.
 
+<a id="appendices-style-related-tools"></a>
+
+<div class="numbered"></div>
+
+<a id="toolchain-requirements"></a>
+
 ## Toolchain requirements
 
 Google style requires using a number of tools in specific ways, outlined here.
 
+<a id="google-format"></a>
+<a id="use-the-google3-formatter"></a>
+<a id="source-code-formatting"></a>
+<a id="appendices-clang-format"></a>
+<a id="formatting"></a>
+<a id="formatting-array-literals"></a>
+<a id="formatting-block-indentation"></a>
+<a id="formatting-column-limit"></a>
+<a id="formatting-empty-blocks"></a>
+<a id="formatting-function-expressions"></a>
+<a id="formatting-nonempty-blocks"></a>
+<a id="formatting-object-literals"></a>
+<a id="formatting-one-statement-perline"></a>
+<a id="formatting-statements"></a>
+<a id="formatting-switch-statements"></a>
+<a id="formatting-vertical-whitespace"></a>
+<a id="formatting-whitespace"></a>
+
+<div class="numbered"></div>
+
+<a id="typescript-compiler"></a>
+
 ### TypeScript compiler
 
 All TypeScript files must pass type checking using the standard tool chain.
+
+<div class="numbered"></div>
+
+<a id="ts-ignore"></a>
 
 #### @ts-ignore
 
@@ -3514,23 +4531,29 @@ Do not use `@ts-ignore` nor the variants `@ts-expect-error` or `@ts-nocheck`.
 
 Why?
 
-They superficially seem to be an easy way to “fix” a compiler error, but in
+They superficially seem to be an easy way to "fix" a compiler error, but in
 practice, a specific compiler error is often caused by a larger problem that can
 be fixed more directly.
 
-For example, if you are using `@ts-ignore` to suppress a type error, then it’s
+For example, if you are using `@ts-ignore` to suppress a type error, then it's
 hard to predict what types the surrounding code will end up seeing. For many
 type errors, the advice in [how to best use `any`](#any) is useful.
 
 You may use `@ts-expect-error` in unit tests, though you generally *should not*.
-`@ts-expect-error` suppresses all errors. It’s easy to accidentally over-match
+`@ts-expect-error` suppresses all errors. It's easy to accidentally over-match
 and suppress more serious errors. Consider one of:
 
-* When testing APIs that need to deal with unchecked values at runtime, add
-  casts to the expected type or to `any` and add an explanatory comment. This
-  limits error suppression to a single expression.
-* Suppress the lint warning and document why, similar to
-  [suppressing `any` lint warnings](#any-suppress).
+-   When testing APIs that need to deal with unchecked values at runtime, add
+    casts to the expected type or to `any` and add an explanatory comment. This
+    limits error suppression to a single expression.
+-   Suppress the lint warning and document why, similar to
+    [suppressing `any` lint warnings](#any-suppress).
+
+<a id="appendices-conformance-framework"></a>
+
+<div class="numbered"></div>
+
+<a id="conformance"></a>
 
 ### Conformance
 
@@ -3544,20 +4567,37 @@ globals, which could break the codebase) and security patterns (such as using
 Google-style TypeScript must abide by any applicable global or framework-local
 conformance rules.
 
+<a id="jsdoc"></a>
+<a id="formatting-comments"></a>
+
+<div class="numbered"></div>
+
+<a id="comments-documentation"></a>
+
 ## Comments and documentation
+
+<div class="numbered"></div>
+
+<a id="jsdoc-vs-comments"></a>
 
 #### JSDoc versus comments
 
 There are two types of comments, JSDoc (`/** ... */`) and non-JSDoc ordinary
 comments (`// ...` or `/* ... */`).
 
-* Use `/** JSDoc */` comments for documentation, i.e. comments a user of the
-  code should read.
-* Use `// line comments` for implementation comments, i.e. comments that only
-  concern the implementation of the code itself.
+*   Use `/** JSDoc */` comments for documentation, i.e. comments a user of the
+    code should read.
+*   Use `// line comments` for implementation comments, i.e. comments that only
+    concern the implementation of the code itself.
 
 JSDoc comments are understood by tools (such as editors and documentation
 generators), while ordinary comments are only for other humans.
+
+<a id="formatting-block-comment-style"></a>
+
+<div class="numbered"></div>
+
+<a id="multi-line-comments"></a>
 
 #### Multi-line comments
 
@@ -3565,12 +4605,16 @@ Multi-line comments are indented at the same level as the surrounding code. They
 *must* use multiple single-line comments (`//`-style), not block comment style
 (`/* */`).
 
-```
+<div class='goodcode'></div>
+
+```ts
 // This is
 // fine
 ```
 
-```
+<div class='badcode'></div>
+
+```ts
 /*
  * This should
  * use multiple
@@ -3582,11 +4626,17 @@ Multi-line comments are indented at the same level as the surrounding code. They
 
 Comments are not enclosed in boxes drawn with asterisks or other characters.
 
+<div class="numbered"></div>
+
+<a id="jsdoc-general-form"></a>
+
 ### JSDoc general form
 
 The basic formatting of JSDoc comments is as seen in this example:
 
-```
+<div class='goodcode'></div>
+
+```ts
 /**
  * Multiple lines of JSDoc text are written here,
  * wrapped normally.
@@ -3597,7 +4647,9 @@ function doSomething(arg: number) { … }
 
 or in this single-line example:
 
-```
+<div class='goodcode'></div>
+
+```ts
 /** This short jsdoc describes the function. */
 function doSomething(arg: number) { … }
 ```
@@ -3608,6 +4660,10 @@ multi-line style with `/**` and `*/` on their own lines.
 Many tools extract metadata from JSDoc comments to perform code validation and
 optimization. As such, these comments *must* be well-formed.
 
+<div class="numbered"></div>
+
+<a id="jsdoc-markdown"></a>
+
 ### Markdown
 
 JSDoc is written in Markdown, though it *may* include HTML when necessary.
@@ -3615,7 +4671,9 @@ JSDoc is written in Markdown, though it *may* include HTML when necessary.
 This means that tooling parsing JSDoc will ignore plain text formatting, so if
 you did this:
 
-```
+<div class='badcode'></div>
+
+```ts
 /**
  * Computes weight based on three factors:
  *   items sent
@@ -3632,7 +4690,9 @@ Computes weight based on three factors: items sent items received last timestamp
 
 Instead, write a Markdown list:
 
-```
+<div class='goodcode'></div>
+
+```ts
 /**
  * Computes weight based on three factors:
  *
@@ -3642,12 +4702,18 @@ Instead, write a Markdown list:
  */
 ```
 
+<div class="numbered"></div>
+
+<a id="jsdoc-tags"></a>
+
 ### JSDoc tags
 
 Google style allows a subset of JSDoc tags. Most tags must occupy their own
 line, with the tag at the beginning of the line.
 
-```
+<div class='goodcode'></div>
+
+```ts
 /**
  * The "param" tag must occupy its own line and may not be combined.
  * @param left A description of the left param.
@@ -3656,7 +4722,9 @@ line, with the tag at the beginning of the line.
 function add(left: number, right: number) { ... }
 ```
 
-```
+<div class='badcode'></div>
+
+```ts
 /**
  * The "param" tag must occupy its own line and may not be combined.
  * @param left @param right
@@ -3664,13 +4732,19 @@ function add(left: number, right: number) { ... }
 function add(left: number, right: number) { ... }
 ```
 
+<div class="numbered"></div>
+
+<a id="jsdoc-line-wrapping"></a>
+
 ### Line wrapping
 
 Line-wrapped block tags are indented four spaces. Wrapped description text *may*
 be lined up with the description on previous lines, but this horizontal
 alignment is discouraged.
 
-```
+<div class='goodcode'></div>
+
+```ts
 /**
  * Illustrates line wrapping for long param/return descriptions.
  * @param foo This is a param with a particularly long description that just
@@ -3685,6 +4759,10 @@ exports.method = function(foo) {
 
 Do not indent when wrapping a `@desc` or `@fileoverview` description.
 
+<div class="numbered"></div>
+
+<a id="document-all-top-level-exports-of-modules"></a>
+
 ### Document all top-level exports of modules
 
 Use `/** JSDoc */` comments to communicate information to the users of your
@@ -3695,12 +4773,20 @@ not immediately obvious from their name, as judged by your reviewer.
 **Exception:** Symbols that are only exported to be consumed by tooling, such as
 @NgModule classes, do not require comments.
 
+<div class="numbered"></div>
+
+<a id="jsdoc-class-comments"></a>
+
 ### Class comments
 
 JSDoc comments for classes should provide the reader with enough information to
 know how and when to use the class, as well as any additional considerations
 necessary to correctly use the class. Textual descriptions may be omitted on the
 constructor.
+
+<div class="numbered"></div>
+
+<a id="method-and-function-comments"></a>
 
 ### Method and function comments
 
@@ -3709,7 +4795,11 @@ from the rest of the method’s JSDoc or from the method name and type signature
 
 Method descriptions begin with a verb phrase that describes what the method
 does. This phrase is not an imperative sentence, but instead is written in the
-third person, as if there is an implied “This method …” before it.
+third person, as if there is an implied "This method ..." before it.
+
+<div class="numbered"></div>
+
+<a id="parameter-property-comments"></a>
 
 ### Parameter property comments
 
@@ -3723,10 +4813,12 @@ parameter `foo`, but also declares a private readonly property `foo`, and
 assigns the parameter into that property before executing the remainder of the
 constructor.
 
-To document these fields, use JSDoc’s `@param` annotation. Editors display the
+To document these fields, use JSDoc's `@param` annotation. Editors display the
 description on constructor calls and property accesses.
 
-```
+<div class='goodcode'></div>
+
+```ts
 /** This class demonstrates how parameter properties are documented. */
 class ParamProps {
   /**
@@ -3739,7 +4831,9 @@ class ParamProps {
 }
 ```
 
-```
+<div class='goodcode'></div>
+
+```ts
 /** This class demonstrates how ordinary fields are documented. */
 class OrdinaryClass {
   /** The bean that will be used in the next call to brew(). */
@@ -3751,6 +4845,13 @@ class OrdinaryClass {
 }
 ```
 
+<a id="omit-comments-that-are-redundant-with-typescript"></a>
+<a id="do-not-use-override"></a>
+
+<div class="numbered"></div>
+
+<a id="jsdoc-type-annotations"></a>
+
 ### JSDoc type annotations
 
 JSDoc type annotations are redundant in TypeScript source code. Do not declare
@@ -3758,29 +4859,44 @@ types in `@param` or `@return` blocks, do not write `@implements`, `@enum`,
 `@private`, `@override` etc. on code that uses the `implements`, `enum`,
 `private`, `override` etc. keywords.
 
+<div class="numbered"></div>
+
+<a id="redundant-comments"></a>
+
 ### Make comments that actually add information
 
 For non-exported symbols, sometimes the name and type of the function or
 parameter is enough. Code will *usually* benefit from more documentation than
 just variable names though!
 
-* Avoid comments that just restate the parameter name and type, e.g.
+*   Avoid comments that just restate the parameter name and type, e.g.
 
-  ```
-  /** @param fooBarService The Bar service for the Foo application. */
-  ```
-* Because of this rule, `@param` and `@return` lines are only required when
-  they add information, and *may* otherwise be omitted.
+    <div class='badcode'></div>
 
-  ```
-  /**
-   * POSTs the request to start coffee brewing.
-   * @param amountLitres The amount to brew. Must fit the pot size!
-   */
-  brew(amountLitres: number, logger: Logger) {
-    // ...
-  }
-  ```
+    ```ts
+    /** @param fooBarService The Bar service for the Foo application. */
+    ```
+
+*   Because of this rule, `@param` and `@return` lines are only required when
+    they add information, and *may* otherwise be omitted.
+
+    <div class='goodcode'></div>
+
+    ```ts
+    /**
+     * POSTs the request to start coffee brewing.
+     * @param amountLitres The amount to brew. Must fit the pot size!
+     */
+    brew(amountLitres: number, logger: Logger) {
+      // ...
+    }
+    ```
+
+<a id="formatting-param-name-comments"></a>
+
+<div class="numbered"></div>
+
+<a id="comments-when-calling-a-function"></a>
 
 #### Comments when calling a function
 
@@ -3790,10 +4906,12 @@ value do not sufficiently convey the meaning of the parameter.
 Before adding these comments, consider refactoring the method to instead accept
 an interface and destructure it to greatly improve call-site readability.
 
-“Parameter name” comments go before the parameter value, and include the
+"Parameter name" comments go before the parameter value, and include the
 parameter name and a `=` suffix:
 
-```
+<div class='goodcode'></div>
+
+```ts
 someFunction(obviousParam, /* shouldRender= */ true, /* name= */ 'hello');
 ```
 
@@ -3801,43 +4919,63 @@ Existing code may use a legacy parameter name comment style, which places these
 comments ~after~ the parameter value and omits the `=`. Continuing to use this
 style within the file for consistency is acceptable.
 
-```
+```ts
 someFunction(obviousParam, true /* shouldRender */, 'hello' /* name */);
 ```
+
+<div class="numbered"></div>
+
+<a id="place-documentation-prior-to-decorators"></a>
 
 ### Place documentation prior to decorators
 
 When a class, method, or property have both decorators like `@Component` and
 JsDoc, please make sure to write the JsDoc before the decorator.
 
-* Do not write JsDoc between the Decorator and the decorated statement.
+*   Do not write JsDoc between the Decorator and the decorated statement.
 
-  ```
-  @Component({
-    selector: 'foo',
-    template: 'bar',
-  })
-  /** Component that prints "bar". */
-  export class FooComponent {}
-  ```
-* Write the JsDoc block before the Decorator.
+    <div class='badcode'></div>
 
-  ```
-  /** Component that prints "bar". */
-  @Component({
-    selector: 'foo',
-    template: 'bar',
-  })
-  export class FooComponent {}
-  ```
+    ```ts
+    @Component({
+      selector: 'foo',
+      template: 'bar',
+    })
+    /** Component that prints "bar". */
+    export class FooComponent {}
+    ```
+
+*   Write the JsDoc block before the Decorator.
+
+    <div class='goodcode'></div>
+
+    ```ts
+    /** Component that prints "bar". */
+    @Component({
+      selector: 'foo',
+      template: 'bar',
+    })
+    export class FooComponent {}
+    ```
+
+<div class="numbered"></div>
+
+<a id="policies"></a>
 
 ## Policies
 
+<a id="policies-be-consistent"></a>
+<a id="policies-newly-added-code-use-google-style"></a>
+
+<div class="numbered"></div>
+
+<a id="consistency"></a>
+
 ### Consistency
 
-For any style question that isn’t settled definitively by this specification, do
-what the other code in the same file is already doing (“be consistent”). If that
-doesn’t resolve the question, consider emulating the other files in the same
+For any style question that isn't settled definitively by this specification, do
+what the other code in the same file is already doing ("be consistent"). If that
+doesn't resolve the question, consider emulating the other files in the same
 directory.
 
 Brand new files *must* use Google Style, regardless of the style choices of
@@ -3846,6 +4984,13 @@ Google Style, reformatting the existing code first is recommended, subject to
 the advice [below](#reformatting-existing-code). If this reformatting is not
 done, then new code *should* be as consistent as possible with existing code in
 the same file, but *must not* violate the style guide.
+
+<a id="policies-code-not-in-google-style"></a>
+<a id="policies-reformatting-existing-code"></a>
+
+<div class="numbered"></div>
+
+<a id="reformatting-existing-code"></a>
 
 #### Reformatting existing code
 
@@ -3856,21 +5001,33 @@ for any other reason.
 
 When updating the style of existing code, follow these guidelines.
 
-1. It is not required to change all existing code to meet current style
-   guidelines. Reformatting existing code is a trade-off between code churn and
-   consistency. Style rules evolve over time and these kinds of tweaks to
-   maintain compliance would create unnecessary churn. However, if significant
-   changes are being made to a file it is expected that the file will be in
-   Google Style.
-2. Be careful not to allow opportunistic style fixes to muddle the focus of a
-   CL. If you find yourself making a lot of style changes that aren’t critical
-   to the central focus of a CL, promote those changes to a separate CL.
+1.  It is not required to change all existing code to meet current style
+    guidelines. Reformatting existing code is a trade-off between code churn and
+    consistency. Style rules evolve over time and these kinds of tweaks to
+    maintain compliance would create unnecessary churn. However, if significant
+    changes are being made to a file it is expected that the file will be in
+    Google Style.
+1.  Be careful not to allow opportunistic style fixes to muddle the focus of a
+    CL. If you find yourself making a lot of style changes that aren’t critical
+    to the central focus of a CL, promote those changes to a separate CL.
+
+<a id="policies-deprecation"></a>
+
+<div class="numbered"></div>
+
+<a id="deprecation"></a>
 
 ### Deprecation
 
 Mark deprecated methods, classes or interfaces with an `@deprecated` JSDoc
 annotation. A deprecation comment must include simple, clear directions for
 people to fix their call sites.
+
+<a id="policies-generated-code-mostly-exempt"></a>
+
+<div class="numbered"></div>
+
+<a id="generated-code"></a>
 
 ### Generated code: mostly exempt
 
@@ -3880,56 +5037,59 @@ hand-written source code must follow the naming requirements. As a special
 exception, such identifiers are allowed to contain underscores, which may help
 to avoid conflicts with hand-written identifiers.
 
+<a id="goals"></a>
+
+<div class="numbered"></div>
+
+<a id="style-guide-goals"></a>
+
 #### Style guide goals
 
-In general, engineers usually know best about what’s needed in their code, so if
+In general, engineers usually know best about what's needed in their code, so if
 there are multiple options and the choice is situation dependent, we should let
-decisions be made locally. So the default answer should be “leave it out”.
+decisions be made locally. So the default answer should be "leave it out".
 
 The following points are the exceptions, which are the reasons we have some
 global rules. Evaluate your style guide proposal against the following:
 
-1. **Code should avoid patterns that are known to cause problems, especially
-   for users new to the language.**
-2. **Code across projects should be consistent across irrelevant variations.**
+1.  **Code should avoid patterns that are known to cause problems, especially
+    for users new to the language.**
 
-   When there are two options that are equivalent in a superficial way, we
-   should consider choosing one just so we don’t divergently evolve for no
-   reason and avoid pointless debates in code reviews.
+2.  **Code across projects should be consistent across irrelevant variations.**
 
-   Examples:
+    When there are two options that are equivalent in a superficial way, we
+    should consider choosing one just so we don't divergently evolve for no
+    reason and avoid pointless debates in code reviews.
 
-   * The capitalization style of names.
-   * `x as T` syntax vs the equivalent `<T>x` syntax (disallowed).
-   * `Array<[number, number]>` vs `[number, number][]`.
-3. **Code should be maintainable in the long term.**
+    Examples:
 
-   Code usually lives longer than the original author works on it, and the
-   TypeScript team must keep all of Google working into the future.
+    -   The capitalization style of names.
+    -   `x as T` syntax vs the equivalent `<T>x` syntax (disallowed).
+    -   `Array<[number, number]>` vs `[number, number][]`.
 
-   Examples:
+3.  **Code should be maintainable in the long term.**
 
-   * We use software to automate changes to code, so code is autoformatted so
-     it’s easy for software to meet whitespace rules.
-   * We require a single set of compiler flags, so a given TS library can be
-     written assuming a specific set of flags, and users can always safely
-     use a shared library.
-   * Code must import the libraries it uses (“strict deps”) so that a
-     refactor in a dependency doesn’t change the dependencies of its users.
-   * We ask users to write tests. Without tests we cannot have confidence
-     that changes that we make to the language, don’t break users.
-4. **Code reviewers should be focused on improving the quality of the code, not
-   enforcing arbitrary rules.**
+    Code usually lives longer than the original author works on it, and the
+    TypeScript team must keep all of Google working into the future.
 
-   If it’s possible to implement your rule as an automated check that is often
-   a good sign. This also supports principle 3.
+    Examples:
 
-   If it really just doesn’t matter that much – if it’s an obscure corner of
-   the language or if it avoids a bug that is unlikely to occur – it’s
-   probably worth leaving out.
+    -   We use software to automate changes to code, so code is autoformatted so
+        it's easy for software to meet whitespace rules.
+    -   We require a single set of compiler flags, so a given TS library can be
+        written assuming a specific set of flags, and users can always safely
+        use a shared library.
+    -   Code must import the libraries it uses ("strict deps") so that a
+        refactor in a dependency doesn't change the dependencies of its users.
+    -   We ask users to write tests. Without tests we cannot have confidence
+        that changes that we make to the language, don't break users.
 
-1. Namespace imports are often called ‘module imports’ [↩](#fnref:module_import)
-2. named imports are sometimes called ‘destructuring
-   imports’ because they use similar syntax to destructuring assignments. [↩](#fnref:destructuring_import)
+4.  **Code reviewers should be focused on improving the quality of the code, not
+    enforcing arbitrary rules.**
 
-This site is open source. [Improve this page](https://github.com/google/styleguide/edit/gh-pages/tsguide.md).
+    If it's possible to implement your rule as an automated check that is often
+    a good sign. This also supports principle 3.
+
+    If it really just doesn't matter that much -- if it's an obscure corner of
+    the language or if it avoids a bug that is unlikely to occur -- it's
+    probably worth leaving out.
