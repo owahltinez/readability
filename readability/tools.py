@@ -352,6 +352,8 @@ TOOL_EXTENSIONS = {
     "shfmt": (".sh", ".bash"),
     "shellcheck": (".sh", ".bash"),
     "rustfmt": (".rs",),
+    "tsc": (".ts", ".tsx"),
+    "go vet": (".go",),
 }
 
 # Headroom below common argv limits; long target lists are split before exec
@@ -390,6 +392,7 @@ CONFIG_SOURCES = {
         "--project-excludes",
     ),
     "biome": (("biome.json", "biome.jsonc"), None, "--config-path", None),
+    "tsc": (("tsconfig.json",), None, "-p", None),
 }
 
 # Words each phase needs, before config and targets
@@ -513,6 +516,82 @@ def _tool_command(binary: str, project_root: Path) -> list[str]:
     return TOOL_RUNNERS.get(binary, [binary])
 
 
+def _tsc_command(project: Path) -> list[str]:
+    """Build the argv prefix that reaches a project's TypeScript compiler.
+
+    Args:
+        project: The directory holding the tsconfig.json.
+
+    Returns:
+        The nearest installed tsc, else whatever PATH resolves.
+    """
+    # Node resolves upward, which is where workspaces hoist it
+    for directory in (project, *project.parents):
+        local = directory / "node_modules" / ".bin" / "tsc"
+        if local.is_file() and os.access(local, os.X_OK):
+            return [str(local)]
+    return [shutil.which("tsc") or "tsc"]
+
+
+def _type_checker_plans(path: Path, boundary: Path) -> list[ToolPlan]:
+    """Plan tsc and go vet, which only run inside a project they can build.
+
+    Both check whole projects or packages rather than the named files, since
+    neither can type-check a file without its imports.
+
+    Args:
+        path: The path being checked.
+        boundary: The outermost directory config discovery may consider.
+
+    Returns:
+        One plan per tsconfig.json and per Go module the path reaches.
+    """
+    plans = [
+        ToolPlan(
+            name="tsc",
+            extensions=TOOL_EXTENSIONS["tsc"],
+            check=(*_tsc_command(root), "--noEmit", "-p", str(root)),
+        )
+        for root, _, _ in _config_groups(path, boundary, "tsc")
+        if root is not None
+    ]
+
+    # ./... skips nested modules, so each of those needs its own run
+    modules = _config_roots_below(path, ("go.mod",), None, "go vet")
+    if _config_root(path, boundary, ("go.mod",), None):
+        if path.is_dir():
+            # A pattern matching no package is an error, not a pass
+            own = [
+                file
+                for file in _matching_paths(path, TOOL_EXTENSIONS["go vet"])
+                if not any(m in Path(file).resolve().parents for m in modules)
+            ]
+            if own:
+                modules.append(path.resolve())
+        else:
+            plans.append(_go_vet_plan(path.parent.resolve(), "."))
+    plans.extend(_go_vet_plan(module, "./...") for module in modules)
+    return plans
+
+
+def _go_vet_plan(directory: Path, pattern: str) -> ToolPlan:
+    """Plan go vet over a package pattern, run where the pattern resolves.
+
+    Args:
+        directory: The directory the pattern is relative to.
+        pattern: The package pattern to vet.
+
+    Returns:
+        The plan.
+    """
+    return ToolPlan(
+        name="go vet",
+        extensions=TOOL_EXTENSIONS["go vet"],
+        check=("go", "vet", pattern),
+        cwd=directory,
+    )
+
+
 def _get_tool_definitions(
     path: Path, project_root: Path, boundary: Path | None = None
 ) -> list[ToolPlan]:
@@ -609,6 +688,8 @@ def _get_tool_definitions(
             path,
         )
     )
+
+    plans.extend(_type_checker_plans(path, boundary))
 
     # A directory owning its config alone lets Pyrefly select the files
     files, section = CONFIG_SOURCES["pyrefly"][:2]

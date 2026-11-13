@@ -9,8 +9,8 @@ quick access to style conventions without browsing HTML pages.
 ## Features
 
 - **Linting & Formatting**: A `check` command that automatically detects and
-  runs relevant tools (Ruff, Pyrefly, Biome, gofmt, goimports, shfmt,
-  shellcheck, and rustfmt) for your project.
+  runs relevant tools (Ruff, Pyrefly, Biome, tsc, gofmt, goimports, go vet,
+  shfmt, shellcheck, and rustfmt) for your project.
 - **Predictable Ownership**: Every supported format has fixed tools, so
   configuration customizes checks without changing which formatter runs.
 - **Style Guides**: A `guide` command that fetches the latest Google style
@@ -93,7 +93,8 @@ such as gofmt and goimports, are unaffected by it.
 | ---------------------------------------------------------------- | --------------------------------------- | ------------------------------------- |
 | `.py`                                                            | Ruff lint/format; Pyrefly type checking | Ruff and Pyrefly native configuration |
 | `.js`, `.jsx`, `.ts`, `.tsx`, `.json`, `.jsonc`, `.css`, `.html` | Biome                                   | `biome.json` or `biome.jsonc`         |
-| `.go`                                                            | gofmt, goimports                        | None                                  |
+| `.ts`, `.tsx`                                                    | tsc type checking                       | `tsconfig.json`, required             |
+| `.go`                                                            | gofmt, goimports; go vet                | `go.mod`, required by go vet          |
 | `.sh`, `.bash`                                                   | shfmt format; shellcheck lint           | None                                  |
 | `.rs`                                                            | rustfmt                                 | None                                  |
 
@@ -103,8 +104,8 @@ successfully.
 
 Biome first checks a project's `node_modules/.bin`. Ruff, Pyrefly, and Biome
 then use `PATH`, followed by `uvx` for the Python tools or `npx` for Biome. The
-runners cache downloads, so subsequent runs work offline. Gofmt and goimports
-must be available on `PATH`.
+runners cache downloads, so subsequent runs work offline. Gofmt, goimports, and
+Go itself, for go vet, must be available on `PATH`.
 
 That keeps this package at ~4 MB rather than the ~54 MB it would take to carry
 Ruff and Pyrefly itself — a cost that would fall on everyone using only `guide`.
@@ -130,6 +131,13 @@ the run rather than passing it.
 Ruff, Pyrefly, and Biome ship with bundled configurations, so they run on every
 file they own without project setup. Gofmt and goimports run on `.go` files even
 when there is no `go.mod`.
+
+Tsc and go vet have no bundled configuration, since neither can type-check a
+file without its project's imports. They run only inside a `tsconfig.json`
+project or a Go module, and check that whole project or package rather than the
+named files. Tsc comes from the nearest `node_modules/.bin`, searching upward
+as Node does, then `PATH`; it is never fetched, so a project whose dependencies
+are not installed reports it as not installed.
 
 A tool that could not be reached at all is never skipped quietly:
 
