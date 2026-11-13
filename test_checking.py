@@ -215,7 +215,7 @@ def test_check_command_biome(
         assert [
             "npx",
             "-y",
-            "@biomejs/biome@2.5.14",
+            "@biomejs/biome@>=2.6",
             phase,
             "--no-errors-on-unmatched",
             str((Path(cwds[0]) / "script.js").resolve()),
@@ -1032,6 +1032,7 @@ def test_bundled_default_configs_are_valid() -> None:
     }
     assert biome_config["linter"]["rules"]["preset"] == "recommended"
     assert biome_config["html"]["parser"]["interpolation"] is True
+    assert biome_config["html"]["formatter"]["enabled"] is True
 
     # The ruff defaults follow the Google Python style guide
     ruff_config = tomllib.loads(_bundled_config("ruff").read_text())
@@ -1456,9 +1457,7 @@ def test_check_runs_biome_without_a_project_config(
     )
 
 
-@pytest.mark.parametrize(
-    "extension", (".md", ".yml", ".yaml", ".scss", ".jsonl")
-)
+@pytest.mark.parametrize("extension", (".yml", ".yaml", ".scss", ".jsonl"))
 @patch("shutil.which")
 @patch("subprocess.run")
 def test_unsupported_formats_run_no_tool(
@@ -1479,6 +1478,30 @@ def test_unsupported_formats_run_no_tool(
     assert result.exit_code == 0
     assert "nothing was checked" in result.stderr
     mock_run.assert_not_called()
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_markdown_is_checked_by_biome(
+    mock_run: MagicMock, mock_which: MagicMock, tmp_path: Path
+) -> None:
+    """A Markdown file, named or alone in a directory, goes to Biome."""
+    mock_which.side_effect = lambda name: name
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        Path("docs").mkdir()
+        Path("docs/README.md").touch()
+
+        file_result = runner.invoke(cli, ["check", "docs/README.md"])
+        directory_result = runner.invoke(cli, ["check", "docs"])
+
+    assert file_result.exit_code == 0
+    assert directory_result.exit_code == 0
+    commands = [invocation.args[0] for invocation in mock_run.call_args_list]
+    assert {command[0] for command in commands} == {"biome"}
+    assert len(commands) == 4
 
 
 @patch("shutil.which")
