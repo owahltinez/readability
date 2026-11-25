@@ -8,6 +8,7 @@ import subprocess
 
 import click
 
+from readability.project_checkers import _project_checker_plans
 from readability.tools import _command_batches
 from readability.tools import _get_tool_definitions
 from readability.tools import _repository_root
@@ -137,7 +138,9 @@ def _check_path(
 
     # Iterate through all supported tool definitions
     report = CheckReport()
-    for tool in _get_tool_definitions(path, project_root, boundary):
+    plans = _get_tool_definitions(path, project_root, boundary)
+    plans.extend(_project_checker_plans(path, boundary))
+    for tool in plans:
         if not _should_run_tool(tool, path):
             continue
 

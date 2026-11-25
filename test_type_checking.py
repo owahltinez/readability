@@ -1,10 +1,10 @@
 from pathlib import Path
 
-from readability.tools import _get_tool_definitions
+from readability.project_checkers import _project_checker_plans
 
 
 def _plans(path: Path, root: Path, name: str) -> list:
-    return [p for p in _get_tool_definitions(path, root) if p.name == name]
+    return [p for p in _project_checker_plans(path, root) if p.name == name]
 
 
 def _executable(path: Path) -> Path:
@@ -112,3 +112,49 @@ def test_go_vet_skips_a_module_whose_go_is_all_nested(tmp_path: Path) -> None:
     [plan] = _plans(tmp_path, tmp_path, "go vet")
 
     assert plan.cwd == (tmp_path / "tools").resolve()
+
+
+CLIPPY_CHECK = ("cargo", "clippy", "--all-targets", "--", "-D", "warnings")
+
+
+def _crate(directory: Path) -> Path:
+    (directory / "src").mkdir(parents=True)
+    (directory / "Cargo.toml").write_text("[package]\nname = 'c'\n")
+    source = directory / "src" / "lib.rs"
+    source.touch()
+    return source
+
+
+def test_clippy_checks_a_files_whole_package(tmp_path: Path) -> None:
+    source = _crate(tmp_path)
+
+    [plan] = _plans(source, tmp_path, "clippy")
+
+    assert plan.check == CLIPPY_CHECK
+    assert plan.fix[:3] == ("cargo", "clippy", "--fix")
+    assert plan.cwd == tmp_path.resolve()
+
+
+def test_clippy_does_not_run_outside_a_package(tmp_path: Path) -> None:
+    (tmp_path / "main.rs").touch()
+
+    assert _plans(tmp_path, tmp_path, "clippy") == []
+
+
+def test_clippy_runs_each_workspace_member_once(tmp_path: Path) -> None:
+    (tmp_path / "Cargo.toml").write_text("[workspace]\nmembers = ['a', 'b']\n")
+    _crate(tmp_path / "a")
+    _crate(tmp_path / "b")
+
+    cwds = sorted(p.cwd for p in _plans(tmp_path, tmp_path, "clippy"))
+
+    assert cwds == [(tmp_path / "a").resolve(), (tmp_path / "b").resolve()]
+
+
+def test_clippy_checks_the_package_around_a_directory(tmp_path: Path) -> None:
+    _crate(tmp_path)
+    _crate(tmp_path / "src" / "nested")
+
+    cwds = sorted(p.cwd for p in _plans(tmp_path / "src", tmp_path, "clippy"))
+
+    assert cwds == [tmp_path.resolve(), (tmp_path / "src/nested").resolve()]
