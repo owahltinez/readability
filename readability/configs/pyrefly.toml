@@ -3,6 +3,9 @@
 # pyproject.toml). The presence of a config file switches pyrefly from its
 # lenient "basic" preset to full type checking.
 
+# pyrefly 1.5+ checks only included files; includes are relative to this file
+project-includes = ["/**/*.py*"]
+
 [errors]
 # When this bundled config is used, pyrefly treats its directory as the
 # project root, so imports local to the checked project cannot be resolved
