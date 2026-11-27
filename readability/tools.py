@@ -400,9 +400,16 @@ CONFIG_SOURCES = {
 TOOL_PHASES = {
     "ruff": {
         "check": ("check", "--force-exclude"),
-        "check_format": ("format", "--check", "--force-exclude"),
+        # Ruff 0.16+ also formats Markdown code blocks; leave them alone
+        "check_format": (
+            "format",
+            "--check",
+            "--force-exclude",
+            "--extend-exclude",
+            "*.md",
+        ),
         "fix": ("check", "--fix", "--force-exclude"),
-        "format": ("format", "--force-exclude"),
+        "format": ("format", "--force-exclude", "--extend-exclude", "*.md"),
     },
     # Type checker only: reports findings, cannot fix or format
     "pyrefly": {"check": ("check",)},

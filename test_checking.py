@@ -128,6 +128,8 @@ def test_check_command_fix(
         "ruff",
         "format",
         "--force-exclude",
+        "--extend-exclude",
+        "*.md",
         "--config",
         cfg,
         "script.py",
@@ -2286,6 +2288,8 @@ def test_unsafe_translates_to_the_ruff_flag(
         "ruff",
         "format",
         "--force-exclude",
+        "--extend-exclude",
+        "*.md",
         "--config",
         cfg,
         "script.py",
@@ -2695,3 +2699,16 @@ def test_partial_shell_tools_installed_warns_and_runs_installed(
     assert [invocation.args[0] for invocation in mock_run.call_args_list] == [
         ["shfmt", "-i", "2", "-ci", "-d", "script.sh"]
     ]
+
+
+@pytest.mark.parametrize("pyproject", ("", "[tool.ruff]\n"))
+def test_fix_leaves_markdown_alone(tmp_path: Path, pyproject: str) -> None:
+    """Ruff 0.16+ formats Markdown code blocks unless told not to."""
+    markdown = "# T\n\n```python\ndef f():\n  ...\n```\n"
+    (tmp_path / "pyproject.toml").write_text(pyproject)
+    (tmp_path / "doc.md").write_text(markdown)
+    (tmp_path / "a.py").write_text("x = 1\n")
+
+    result = CliRunner().invoke(cli, ["check", str(tmp_path), "--fix"])
+
+    assert (tmp_path / "doc.md").read_text() == markdown, result.output
