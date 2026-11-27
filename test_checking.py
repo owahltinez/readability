@@ -128,8 +128,8 @@ def test_check_command_fix(
         "ruff",
         "format",
         "--force-exclude",
-        "--extend-exclude",
-        "*.md",
+        "--config",
+        'extend-exclude = ["*.md"]',
         "--config",
         cfg,
         "script.py",
@@ -335,7 +335,7 @@ def test_default_configs_omitted_when_project_configured(
         tool.name: tool for tool in _get_tool_definitions(py_file, tmp_path)
     }
     assert "--config" not in tools["ruff"].check
-    assert "--config" not in tools["ruff"].format
+    assert str(_bundled_config("ruff")) not in tools["ruff"].format
     assert "--config" not in tools["pyrefly"].check
 
     ts_file = tmp_path / "script.ts"
@@ -369,7 +369,9 @@ def test_ruff_uses_config_from_the_checked_paths_own_package(
     }
 
     for command_name in ("check", "check_format", "fix", "format"):
-        assert "--config" not in getattr(tools["ruff"], command_name)
+        assert str(_bundled_config("ruff")) not in getattr(
+            tools["ruff"], command_name
+        )
     assert str(_bundled_config("pyrefly")) in tools["pyrefly"].check
 
 
@@ -2288,8 +2290,8 @@ def test_unsafe_translates_to_the_ruff_flag(
         "ruff",
         "format",
         "--force-exclude",
-        "--extend-exclude",
-        "*.md",
+        "--config",
+        'extend-exclude = ["*.md"]',
         "--config",
         cfg,
         "script.py",

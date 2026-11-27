@@ -400,16 +400,21 @@ CONFIG_SOURCES = {
 TOOL_PHASES = {
     "ruff": {
         "check": ("check", "--force-exclude"),
-        # Ruff 0.16+ also formats Markdown code blocks; leave them alone
+        # Ruff 0.16+ formats Markdown code blocks; 0.15 lacks the CLI flag
         "check_format": (
             "format",
             "--check",
             "--force-exclude",
-            "--extend-exclude",
-            "*.md",
+            "--config",
+            'extend-exclude = ["*.md"]',
         ),
         "fix": ("check", "--fix", "--force-exclude"),
-        "format": ("format", "--force-exclude", "--extend-exclude", "*.md"),
+        "format": (
+            "format",
+            "--force-exclude",
+            "--config",
+            'extend-exclude = ["*.md"]',
+        ),
     },
     # Type checker only: reports findings, cannot fix or format
     "pyrefly": {"check": ("check",)},
