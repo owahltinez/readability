@@ -117,7 +117,7 @@ configurations, and no maximum. A ceiling would freeze anyone who installed
 nothing at whatever was current when this package shipped, and tie its releases
 to Ruff's — which has published seventeen minor series, roughly one every six
 weeks. If you need a fixed version, install it: an installed tool always wins
-over a fetched one.
+over a fetched one. Installed Ruff must be 0.16 or later.
 
 Biome is the temporary exception, pinned to 2.5.14: from 2.5.15 it panics
 (`path is expected to be under the root`) when the bundled config sits outside

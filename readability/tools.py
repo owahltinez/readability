@@ -327,7 +327,7 @@ def _plan(
 
 # Cached fetches for a tool nobody installed; floors only, never ceilings
 TOOL_RUNNERS = {
-    "ruff": ["uvx", "ruff>=0.15"],
+    "ruff": ["uvx", "ruff>=0.16"],
     "pyrefly": ["uvx", "pyrefly>=1.2"],
     # Pinned until 2.5.15's panic with an external config is fixed upstream
     "biome": ["npx", "-y", "@biomejs/biome@2.5.14"],
@@ -400,21 +400,16 @@ CONFIG_SOURCES = {
 TOOL_PHASES = {
     "ruff": {
         "check": ("check", "--force-exclude"),
-        # Ruff 0.16+ formats Markdown code blocks; 0.15 lacks the CLI flag
+        # Ruff 0.16+ also formats Markdown code blocks; leave them alone
         "check_format": (
             "format",
             "--check",
             "--force-exclude",
-            "--config",
-            'extend-exclude = ["*.md"]',
+            "--extend-exclude",
+            "*.md",
         ),
         "fix": ("check", "--fix", "--force-exclude"),
-        "format": (
-            "format",
-            "--force-exclude",
-            "--config",
-            'extend-exclude = ["*.md"]',
-        ),
+        "format": ("format", "--force-exclude", "--extend-exclude", "*.md"),
     },
     # Type checker only: reports findings, cannot fix or format
     "pyrefly": {"check": ("check",)},

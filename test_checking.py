@@ -128,8 +128,8 @@ def test_check_command_fix(
         "ruff",
         "format",
         "--force-exclude",
-        "--config",
-        'extend-exclude = ["*.md"]',
+        "--extend-exclude",
+        "*.md",
         "--config",
         cfg,
         "script.py",
@@ -335,7 +335,7 @@ def test_default_configs_omitted_when_project_configured(
         tool.name: tool for tool in _get_tool_definitions(py_file, tmp_path)
     }
     assert "--config" not in tools["ruff"].check
-    assert str(_bundled_config("ruff")) not in tools["ruff"].format
+    assert "--config" not in tools["ruff"].format
     assert "--config" not in tools["pyrefly"].check
 
     ts_file = tmp_path / "script.ts"
@@ -369,9 +369,7 @@ def test_ruff_uses_config_from_the_checked_paths_own_package(
     }
 
     for command_name in ("check", "check_format", "fix", "format"):
-        assert str(_bundled_config("ruff")) not in getattr(
-            tools["ruff"], command_name
-        )
+        assert "--config" not in getattr(tools["ruff"], command_name)
     assert str(_bundled_config("pyrefly")) in tools["pyrefly"].check
 
 
@@ -2290,8 +2288,8 @@ def test_unsafe_translates_to_the_ruff_flag(
         "ruff",
         "format",
         "--force-exclude",
-        "--config",
-        'extend-exclude = ["*.md"]',
+        "--extend-exclude",
+        "*.md",
         "--config",
         cfg,
         "script.py",
@@ -2709,8 +2707,9 @@ def test_fix_leaves_markdown_alone(tmp_path: Path, pyproject: str) -> None:
     markdown = "# T\n\n```python\ndef f():\n  ...\n```\n"
     (tmp_path / "pyproject.toml").write_text(pyproject)
     (tmp_path / "doc.md").write_text(markdown)
-    (tmp_path / "a.py").write_text("x = 1\n")
+    (tmp_path / "a.py").write_text("x=1\n")
 
     result = CliRunner().invoke(cli, ["check", str(tmp_path), "--fix"])
 
-    assert (tmp_path / "doc.md").read_text() == markdown, result.output
+    assert (tmp_path / "a.py").read_text() == "x = 1\n", result.output
+    assert (tmp_path / "doc.md").read_text() == markdown
